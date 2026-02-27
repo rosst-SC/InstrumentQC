@@ -1,14 +1,9 @@
-#git config --global user.email ""
-#git config --global user.name ""
-#usethis::edit_r_environ()
-
 # Setup in Correct Directory
-Linux <- file.path("/home", "david", "Documents", "InstrumentQC")
-Windows <- file.path("C:", "Users", "Aurora", "Documents", "InstrumentQC")
+setwd("/Users/r.turner/Documents/Positron_Local/InstrumentQC")
+getwd()
 
-OperatingSystem <- Sys.info()["sysname"]
-if(OperatingSystem == "Linux"){OS <- Linux
-} else if (OperatingSystem == "Windows"){OS <- Windows}
+OS <- getwd()
+list.files(OS)
 
 WorkingDirectory <- OS
 setwd(WorkingDirectory)
@@ -16,6 +11,10 @@ source("renv/activate.R")
 
 library(stringr)
 library(purrr)
+library(dplyr)
+library(Luciernaga)
+library(lubridate)
+library(git2r)
 
 # Find out current date
 Today <- Sys.Date()
@@ -29,8 +28,6 @@ if (length(AnyFlags) == 0){
 
 # Git Pull
 RepositoryPath <- WorkingDirectory
-#RepositoryPath <- file.path(RepositoryPath, ".git")
-#TheRepo <- git2r::repository(RepositoryPath, discover = FALSE)
 TheRepo <- git2r::repository(RepositoryPath)
 git2r::pull(TheRepo)
 
@@ -74,9 +71,9 @@ PotentialAppsDays <- PotentialAppsDays[-AppsRemoveIndex]
 if (!length(PotentialGainDays) == 0){
 # Gain Starting Locations
 
-SetupFolder <- file.path("C:", "CytekbioExport", "Setup")
-TheSetupFiles <- list.files(SetupFolder, pattern="DailyQC", full.names=TRUE)
-
+SetupFolder <- file.path("/Users/r.turner/Documents/Positron_Local/InstrumentQC/data/5L")
+TheSetupFiles <- list.files(path = SetupFolder, pattern = "DailyQC", full.names = TRUE, recursive = FALSE)
+  
 Dates <- as.character(PotentialGainDays)
 Dates <- gsub("-", "", Dates)
 
@@ -93,7 +90,7 @@ if (!length(GainMatches) == 0){
 if (!length(PotentialMFIDays) == 0){
 # MFI Starting Locations
 
-FCSFolder <- file.path("D:", "Aurora 5_FCS Files", "Experiments", "Admin")
+FCSFolder <- file.path("/Users/r.turner/Documents/Positron_Local/InstrumentQC/data/5L")
 MonthStyle <- format(Today, "%Y-%m")
 MonthFolder <- paste0("QC_", MonthStyle)
 MonthFolder <- file.path(FCSFolder, MonthFolder)
@@ -112,7 +109,7 @@ walk(.x=Instrument, .f=Luciernaga:::QCBeadParse, MainFolder=MainFolder)
   }
 
 if (!length(PotentialAppsDays) == 0){
-    SetupFolder <- file.path("C:", "CytekbioExport")
+    SetupFolder <- file.path("/Users/r.turner/Documents/Positron_Local/InstrumentQC/data/5L")
     TheSetupFiles <- list.files(SetupFolder, pattern="Application", full.names=TRUE)
     MonthStyle <- format(Today, "%Y-%m")
     MonthStyle <- sub("([0-9]{4})-([0-9]{2})", "\\2-\\1", MonthStyle)

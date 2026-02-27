@@ -11,8 +11,12 @@ project:
 #| message: false
 #| warning: false
 
-library(Luciernaga)
+library(stringr)
+library(purrr)
 library(dplyr)
+library(Luciernaga)
+library(lubridate)
+library(git2r)
 ```
 
 ```{r}

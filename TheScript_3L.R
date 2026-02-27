@@ -1,28 +1,27 @@
-#Terminal #git config --global user.email ""
-#Terminal #git config --global user.name ""
-#Console #gitcreds::gitcreds_set()
-#Console #usethis::edit_r_environ()
-
 # Setup in Correct Directory
-Linux <- file.path("/home", "david", "Documents", "InstrumentQC")
-Windows <- file.path("C:", "DailyQC", "InstrumentQC")
+setwd("/Users/r.turner/Documents/Positron_Local/InstrumentQC")
+getwd()
 
-OperatingSystem <- Sys.info()["sysname"]
-if(OperatingSystem == "Linux"){OS <- Linux
-} else if (OperatingSystem == "Windows"){OS <- Windows}
+OS <- getwd()
+list.files(OS)
 
 WorkingDirectory <- OS
 setwd(WorkingDirectory)
-#source("renv/activate.R")
+source("renv/activate.R")
 
 library(stringr)
 library(purrr)
+library(dplyr)
+library(Luciernaga)
+library(lubridate)
+library(git2r)
 
 # Find out current date
 Today <- Sys.Date()
 Today <- as.Date(Today)
 
 # Check for Flag Files
+
 AnyFlags <- list.files(WorkingDirectory, pattern="Flag.csv", full.names=TRUE)
 
 if (length(AnyFlags) == 0){

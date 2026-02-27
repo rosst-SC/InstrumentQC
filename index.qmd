@@ -19,7 +19,7 @@ library(Luciernaga)
 
 Computer <- getwd()
 MainFolder <- file.path(Computer, "data")
-TheList <- c("3L", "4L", "5L", "CS")
+TheList <- c("3L", "5L")
 
 # Updating Data
 #walk(.x=TheList, MainFolder=MainFolder, .f=Luciernaga:::DailyQCParse)
@@ -30,14 +30,9 @@ TheList <- c("3L", "4L", "5L", "CS")
 MFI_3L <- Luciernaga:::CurrentData(x="3L", MainFolder=MainFolder, type = "MFI")
 Gain_3L <- Luciernaga:::CurrentData(x="3L", MainFolder=MainFolder, type = "Gain")
 
-MFI_4L <- Luciernaga:::CurrentData(x="4L", MainFolder=MainFolder, type = "MFI")
-Gain_4L <- Luciernaga:::CurrentData(x="4L", MainFolder=MainFolder, type = "Gain")
-
 MFI_5L <- Luciernaga:::CurrentData(x="5L", MainFolder=MainFolder, type = "MFI")
 Gain_5L <- Luciernaga:::CurrentData(x="5L", MainFolder=MainFolder, type = "Gain")
 
-MFI_CS <- Luciernaga:::CurrentData(x="CS", MainFolder=MainFolder, type = "MFI")
-Gain_CS <- Luciernaga:::CurrentData(x="CS", MainFolder=MainFolder, type = "Gain")
 ```
 
 ```{r}
@@ -47,26 +42,17 @@ WindowOfInterest <- Sys.time() - months(24)
 MFI_3L <- MFI_3L |> filter(DateTime >= WindowOfInterest)
 Gain_3L <- Gain_3L |> filter(DateTime >= WindowOfInterest)
 
-MFI_4L <- MFI_4L |> filter(DateTime >= WindowOfInterest)
-Gain_4L <- Gain_4L |> filter(DateTime >= WindowOfInterest)
-
 MFI_5L <- MFI_5L |> filter(DateTime >= WindowOfInterest)
 Gain_5L <- Gain_5L |> filter(DateTime >= WindowOfInterest)
 
-MFI_CS <- MFI_CS |> filter(DateTime >= WindowOfInterest)
-Gain_CS <- Gain_CS |> filter(DateTime >= WindowOfInterest)
 ```
 
 ```{r}
 The3L <- Luciernaga:::VisualQCSummary(x=Gain_3L)
-The4L <- Luciernaga:::VisualQCSummary(x=Gain_4L)
 The5L <- Luciernaga:::VisualQCSummary(x=Gain_5L)
-TheCS <- Luciernaga:::VisualQCSummary(x=Gain_CS)
 
 Table3L <- Luciernaga:::SmallTable(data=The3L)
-Table4L <- Luciernaga:::SmallTable(data=The4L)
 Table5L <- Luciernaga:::SmallTable(data=The5L)
-TableCS <- Luciernaga:::SmallTable(data=TheCS)
 ```
 
 ```{r}
@@ -81,7 +67,7 @@ ShinyData <- read.csv(HistoricalPath, check.names = FALSE)
 ```
 
 ```{r}
-x <-  list("3L", "4L", "5L", "CS")
+x <-  list("3L", "5L")
 
 DataForPlot <- Luciernaga:::QCHistoryArchive(x=x, historydata=ShinyData, timewindow=24)
 Transposed <- t(DataForPlot)
@@ -92,7 +78,7 @@ DataForPlot1 <- DataForPlot1 %>% tibble::rownames_to_column(., var="Date")
 DataForPlot1$Date <- as.Date(DataForPlot1$Date) 
 Data <- DataForPlot1 |> arrange(desc(Date))
 
-Data <- Data |> relocate("3L", "4L", "5L", "CS", .after="Date")
+Data <- Data |> relocate("3L", "5L", .after="Date")
 
 Data[2:5] <- Data[2:5] |> mutate(across(everything(), ~ na_if(., "Unknown")))
 
@@ -108,12 +94,8 @@ TheDate <- Data |> slice(1) |> pull(Date)
 ```{r}
 TheStatus3L <- Luciernaga:::CurrentStatus(x="3L", data=Data) %>% Luciernaga:::InstrumentText(.)
 TheColor3L <- Luciernaga:::CurrentStatus(x="3L", data=Data) %>% Luciernaga:::InstrumentColor(.)
-TheStatus4L <- Luciernaga:::CurrentStatus(x="4L", data=Data) %>% Luciernaga:::InstrumentText(.)
-TheColor4L <- Luciernaga:::CurrentStatus(x="4L", data=Data) %>% Luciernaga:::InstrumentColor(.)
 TheStatus5L <- Luciernaga:::CurrentStatus(x="5L", data=Data) %>% Luciernaga:::InstrumentText(.)
 TheColor5L <- Luciernaga:::CurrentStatus(x="5L", data=Data) %>% Luciernaga:::InstrumentColor(.)
-TheStatusCS <- Luciernaga:::CurrentStatus(x="CS", data=Data) %>% Luciernaga:::InstrumentText(.)
-TheColorCS <- Luciernaga:::CurrentStatus(x="CS", data=Data) %>% Luciernaga:::InstrumentColor(.)
 ```
 
 ## {.sidebar}
@@ -155,15 +137,6 @@ list(value = paste0("QC Status: ", TheStatus3L),
 
 #### Column
 
-```{r}
-#| content: valuebox
-#| title: "4L"
-#| icon: cup-hot
-
-list(value = paste0("QC Status: ", TheStatus4L),
-     color = TheColor4L)
-
-```
 
 ### Row  {height="50%"}
 
@@ -180,35 +153,18 @@ list(value = paste0("QC Status: ", TheStatus5L),
 
 #### Column {scrolling=FALSE}
 
-```{r}
-#| content: valuebox
-#| title: "CS"
-#| icon: cup-hot
-
-list(value = paste0("QC Status: ", TheStatusCS),
-     color = TheColorCS)
-```
-
 ## Second {.tabset}
 ```{r}
 #| title: 3L
 Table3L
 ```
 
-```{r}
-#| title: 4L
-Table4L
-```
 
 ```{r}
 #| title: 5L
 Table5L
 ```
 
-```{r}
-#| title: CS
-TableCS
-```
 
 ```{r}
 #| echo: false
@@ -240,9 +196,7 @@ ui <- fluidPage(
            fluidRow(
              column(12, align = "center",
                     actionButton("btn_3L", label = "3L"),
-                    actionButton("btn_4L", label = "4L"),
                     actionButton("btn_5L", label = "5L"),
-                    actionButton("btn_CS", label = "CS")
              )
            ),
            fluidRow(
@@ -285,9 +239,7 @@ server <- function(input, output, session) {
   selected_instrument <- reactiveVal()
   
   observeEvent(input$btn_3L, { selected_instrument("3L") })
-  observeEvent(input$btn_4L, { selected_instrument("4L") })
   observeEvent(input$btn_5L, { selected_instrument("5L") })
-  observeEvent(input$btn_CS, { selected_instrument("CS") })
 
   table_data <- eventReactive(input$render, {
     req(input$date, selected_instrument())

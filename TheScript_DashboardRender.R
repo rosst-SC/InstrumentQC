@@ -1,6 +1,6 @@
 library(git2r)
-Local <- file.path("C:", "Users", "12692")
-RepositoryPath <- file.path(Local, "Documents", "InstrumentQC")
+Local <- file.path("/Users/r.turner/Documents/Positron_Local/InstrumentQC")
+RepositoryPath <- Local
 TheRepo <- repository(RepositoryPath)
 git2r::pull(TheRepo)
 
