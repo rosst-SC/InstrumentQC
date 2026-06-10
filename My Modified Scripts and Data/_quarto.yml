@@ -1,0 +1,39 @@
+project:
+  type: website
+  output-dir: docs/
+  render:
+    - index.qmd
+    - Aurora3L.qmd
+    - Aurora5L.qmd
+    - help.qmd
+    - 404.qmd
+website:
+  announcement:
+    icon: info-circle
+    dismissable: true
+    content: "Please see left-sidebar for definitions"
+    type: info
+    position: below-navbar
+  title: "Instrument QC"
+  site-path: "/InstrumentQC/"
+  navbar:
+    logo: images/SydneyCytometry.jpg
+    left:
+    - text: "Home"
+      href: index.qmd
+    - text: "Levey-Jennings Plots"
+      menu:
+      - text: "Cytek Aurora 3L"
+        href: Aurora3L.qmd
+      - text: "Cytek Aurora 5L"
+        href: Aurora5L.qmd
+    right:
+    - text: "Help"
+      href: help.qmd
+  page-footer:
+    background: light
+    left: University of Sydney, Australia
+
+format:
+  html:
+    theme: styles.scss

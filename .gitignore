@@ -18,3 +18,11 @@ TheScript.R
 .Rprofile
 
 **/*.quarto_ipynb
+
+# OS / editor junk
+.DS_Store
+
+# Raw QC staging files (transient — copied in, processed into
+# data/*/Archive/*.csv, then deleted by TheScript_*.R)
+*.fcs
+DailyQCReport_*.CSV

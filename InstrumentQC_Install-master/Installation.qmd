@@ -1,0 +1,89 @@
+---
+toc: true
+---
+
+# Install Software
+
+You will first need to make sure that R, Rstudio, Rtools, Quarto and Git are installed on every instrument computer that you will be collecting daily QC data from. Follow along below for instructions for downloading each on a Windows computer.
+
+## R
+
+[R](https://www.r-project.org/) is a free software and programming language used by researchers and data scientist worldwide. To begin you will need to navigate to the main [website](https://cran.rstudio.com/). You will first select [Download R for Windows]{.underline}
+
+![](images/01_RInstall.png){fig-align="center" width="600"}
+
+You will be redirected to the next screen, where you should select [install R for the first time]{.underline}:
+
+![](images/02_RInstall.png){fig-align="center" width="600"}
+
+And finally you will see the following screen, where you will select the current version of [Download R for Windows]{.underline}:
+
+![](images/03_RInstall.png){fig-align="center" width="600"}
+
+The next screen will ask where you want to save the installer. I generally place it on the desktop. Once downloaded, double click and proceed with the software installation, selecting the default options.
+
+## Rstudio
+
+[Rstudio](https://posit.co/download/rstudio-desktop/) is an integrated development environment (IDE), providing an interface with R that is friendlier to many users. We will use it in our context to set up project folders that will contain the code and data needed to process the QC data and export it to the dashboard.
+
+To download, we first navigate to the [website](https://posit.co/download/rstudio-desktop/) and select [Download R Studio Desktop for Windows]{.underline}
+
+![](images/01_Rstudio.png){fig-align="center" width="600"}
+
+This will then proceed to show the pop-up asking where you want to save the installer. Save to the desktop, and then double click the installer. Follow the default installation prompts.
+
+## Rtools
+
+R packages are made up of functions that carry out specific tasks. Some of the R packages that we will be using require compilation from source code, which requires installation of [Rtools](https://cran.r-project.org/bin/windows/Rtools/) to mediate this process.
+
+To begin, navigate to the [website](https://cran.r-project.org/bin/windows/Rtools/) and select [the most recent version of Rtools]{.underline}
+
+![](images/01_Rtools.png){fig-align="center" width="600"}
+
+Then, you will select [the regular Rtools installer]{.underline}
+
+![](images/02_Rtools.png){fig-align="center" width="600"}
+
+This will then provide the pop-up asking where to save the installer. Place on the desktop, then after it has finished downloading, double click to run the installer. Select the default options.
+
+## Quarto
+
+The dashboard (and this website you are currently reading) are built with [Quarto](https://quarto.org/). It facilitates making websites from various programming languages commonly used by data scientist who didn't start off as computer programmers. In our context, we will use it to produce both the website and individual dashboard pages.
+
+To begin, after navigating to the [website](https://quarto.org/) we will first select the [Get Started]{.underline} tab
+
+![](images/01_Quarto.png){fig-align="center" width="600"}
+
+Then we will select [Download Quarto Cli]{.underline} to download the most recent version for Windows.
+
+![](images/02_Quarto.png){fig-align="center" width="600"}
+
+Finally, the pop-up asking where we want to save the installer will pop up. Save to the desktop, and after it finished downloading, double click and select the default options.
+
+## Git
+
+[Git](https://git-scm.com/) is used for version control by many programmers. We will be using it in the context of the dashboard for managing the processed data, and forwarding it on to GitHub for use in the dashboard.
+
+To begin, we will first navigate to the [website](https://git-scm.com/) and select the download from Windows option.
+
+![](images/01_Git.png){fig-align="center" width="600"}
+
+We will then proceed and select [install 64-bit Git for Windows Setup]{.underline} option
+
+![](images/02_Git.png){fig-align="center" width="600"}
+
+Finally, the pop-up will appear asking where to save the installer. Select and save to the Desktop. After the installer has finished downloading, double click, and accept the default options. Be advised, Git has a lot of options, for now, just accept all defaults without wandering off on a "What is Vim?!?" rabbit-hole.
+
+# Setting up GitHub Account
+
+Now that you have installed the software needed on the instrument computer, you will need to make sure to set up a [GitHub](https://github.com/) account if you don't already have one (or are setting up a new one for your core). The repository you set up using the GitHub account will be where each individual instrument computer sends the data to, and where the website will be stored/accessed.
+
+To begin, navigate to the [website](https://github.com/), provide an email and select Sign up for GitHub.
+
+![](images/01_Github.png){fig-align="center" width="600"}
+
+Then you will need to create an account and set a password.
+
+![](images/02_Github.png){fig-align="center" width="600"}
+
+Proceed with the account creation, selecting the defaults (specifically the free versions).

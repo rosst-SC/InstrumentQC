@@ -1,0 +1,52 @@
+---
+toc: true
+---
+
+```{r}
+#| warning: false
+#| message: false
+#| include: false
+library(BiocStyle)
+```
+
+
+# Introduction
+In the previous section, we installed the required software, set up the Git permissions for the individual local computers needed for Rstudio and GitHub to communicate and pass along updated files stored locally to your remote repository, and made sure the required R packages were installed. 
+
+In this section, we will now start to modify existing R code originally configured for the the UMGCC flow core computers and adapt it for your setup. This involves first understanding the individual components that are present within the InstrumentQC repository and their purpose. Afterwards, we will identify and change file.paths within the individual .R scripts and .qmd files to find the newly acquired QC .fcs files (and DailyQC report .csv files for Cytek instruments) in their respective folders on your local computers.
+
+# Repository elements
+
+Before we start finding file.paths and modifying lines of code, let's examine the files immediately visible when we first open the forked InstrumentQC repository folder. To do this navigate in FileExplorer to the location you saved the forked repository (we suggested Documents). When you find it, double click to open the folder, and arrange by name. When viewed alphabetically, we see something resembling the following
+
+![](images/01_Structure.png){fig-align="center" width="600"}
+
+## qmd files
+
+Within the files currently visible, we have individual files that are named after invidual instruments (Aurora3L, Aurora4L, Aurora5L, AuroraCS, LSRII, Aria, Canto). Those that have a .qmd ending contain both text and code segments that together produce a website page. For example, when the Aurora5L.qmd document gets processed into .html, it forms the [following](https://umgccfcss.github.io/InstrumentQC/Aurora5L.html) webpage. By contrast, when the LSRII.qmd document gets processed into .html, it forms its own [webpage](https://umgccfcss.github.io/InstrumentQC/LSRII.html). 
+
+Each Instrument.qmd file, by combining and rearranging individual building code block elements within, allows for extensive modification to account for for the differences for the various instruments (number of lasers, detector configuration and parameters) that can be seen on their respective webpages. We will examine these .qmd files and their individual elements at greater depth in the [Instrument Layout](InstrumentLayout.qmd) section. 
+
+## R files
+
+Continuing scrolling down, we can identify another repeating element set of files (TheScript_3L, TheScript_4L, TheScript_5L, TheScript_CS) that end in .R.
+
+These are .R files, and they contain only R code. In this context, they work as scripts, containing sets of instructions to find the correct storage folder, identify any new data, process it, and save it to individual instruments Archive data folder. Our first modification of file.paths will occur within these Script files. 
+
+
+## Individual Instrument Folders
+We will touch on the other files present within this initial view later on. Before moving to adjust the file paths, go ahead and double click on the data folder. Within this folder, you can see individual folders corresponding to the individual instruments, as well as some of the .pdf and .csv files. Go ahead and double click on the 5L folder. 
+
+At this point, you see nothing but an Archive folder. If however, you were to look in the middle of the processing step, you would see a bunch of .csv and .fcs files also present, since this folder is where the individual computer copies all identified newly acquired files before they are processed. Once they are successfully processed, their data gets copied to the .csv files found within the Archive folder. Once this has been done successfully, the copies of the unprocessed data located in this folder get deleted, leaving only the Archive folder with the processed data present.
+
+## Further considerations
+
+Now that you have an initial idea of the contents of the repository, you can start to prepare a to-do list for changes that you will need to carry out for adapting the existing project to your own instruments. 
+
+If you have only a single cytometer, you will only need a single Instrument.R, Instrument.qmd and Instrument folder to process and store the data, and ultimately generate a single tab webpage. 
+
+If you have 8 instruments, you would need to add those three elements for each one of them, modifying the names accordingly. 
+
+And for each instrument, the file.path arguments will need to direct the computer to find the newly acquired QC data in the correct folder location on those computers, and then pass it to the corresponding Instrument folder so that it can be processed. 
+
+If this sounds confusing, do not worry, we will go through these indivual elements in the process of adjusting the file.paths. 

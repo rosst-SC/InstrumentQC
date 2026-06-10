@@ -1,0 +1,90 @@
+---
+toc: true
+---
+
+```{r}
+#| warning: false
+#| message: false
+#| include: false
+library(BiocStyle)
+```
+
+
+# Introduction
+Previously, we installed the required software, and set up the Git permissions on individual local computers needed for Rstudio and GitHub to communicate and pass along updated files stored locally to your remote repository. We will next install the R packages needed for data processing and handling of the QC data generated daily. 
+
+# R Packages
+
+R is a programming language originally focused on statistical analyses. Through the contributions of many individuals over the years in creating additional R packages, its versatility has expanded to other areas. These R packages consist of additional code (ie. functions) that once installed (and loaded via the library call) allow you to do countless things not originally present in the original (base) code. An example of this was in the last section when we installed the `r CRANpkg("devtools")` package that allowed us to set up communication between RStudio and GitHub. 
+
+R packages are publicly available typically through either the 1) CRAN, or 2) Bioconductor repositories. Additional R packages (typically those under development) may only be available via 3) GitHub. Knowing which repository a package can be found in is important part of the installation process, as the code used to install from different repositories will differ slightly.
+
+## CRAN
+
+We will start by first installing some of the R packages we will need that are found on the CRAN repository. 
+
+To do so, we will first run the following code chunk:
+
+```{r}
+#| eval: FALSE
+install.packages("dplyr")
+install.packages("ggplot2")
+install.packages("devtools")
+install.packages("BiocManager")
+```
+
+When installing a package, we surround the package name in quotation marks. Forgetting to add the quotation marks is a common source of an error message when first getting started in R that we all have done at some point. 
+
+For the above, we installed the following R packages: `r CRANpkg("dplyr")`, which allows rearranging of data's rows and columns; `r CRANpkg("ggplot2")` used in creating the visualization plots. And finally we installed `r CRANpkg("BiocManager")`, which is the R package that serves as the manager for installation of packages located in Bioconductor repositories. We will use it's functions within the next section.
+
+## Bioconductor
+
+Bioconductor is a repository for R packages that specialize in bioinformatics. The majority of Cytometry R packages can be found here.  To be able to install Bioconductor packages, we first need to load the BiocManager package at the start of a session through the library call.
+
+```{r}
+#| eval: FALSE
+library(BiocManager)
+```
+
+Note, unlike with install.packages() function where we surround the name of the R package name in quotation marks, when loading a package with the library() function quotation marks are not needed. 
+
+Now that BiocManager is active, we can use it to install packages from Bioconductor with the following code:
+
+```{r}
+#| eval: FALSE
+install("flowCore")
+install("flowWorkspace")
+install("ggcyto")
+```
+
+We installed `r Biocpkg("flowCore")`  and `r Biocpkg("flowWorkspace")`, which provide the core infrastructure needed to work with .fcs files in R. The `r Biocpkg("ggcyto")` package is used to visualize the .fcs data.
+
+And finally, we  need to install one package from GitHub using `r CRANpkg("devtools")`. This is our R package, [Luciernaga](https://github.com/DavidRach/Luciernaga), where I have added functions that are needed to process the QC files and assemble the dashboard. We are in the process of submitting the package to Bioconductor, but until then, it is available via GitHub.
+
+```{r}
+#| eval: FALSE
+library(devtools)
+install_github("https://github.com/DavidRach/Luciernaga", dependencies = TRUE)
+```
+
+Note, Luciernaga contains a config.win file needed for a communicating with Python function that throws an error on some of our campus computers causing the IT firewall to trigger. Since it is not needed for building the website, if you encounter this error, install the following "branch" of the package that doesn't contain that function.
+
+```{r}
+#| eval: FALSE
+library(devtools)
+install_github("https://github.com/DavidRach/Luciernaga", ref="NoPythonConfig", dependencies = TRUE)
+```
+
+
+## Troubleshooting
+
+For coding-beginners, please note, during the installation of an R package, if you are missing required dependencies, you will be asked whether you want to install the missing packages. Select yes for these. When there are newer versions of an R package, it will ask if you want to update to the newer version, which in general is a good idea but not required if you are short on time. 
+
+During the installation process, if an error is encountered, you will get an error message and a red troubleshooting explanation describing the issue. Read this carefully, and search online for the missing dependency, identifying whether it is a CRAN or a Bioconductor package. Then use the corresponding installation setup as seen above to install the missing package and hopefully fix the issue. Once this is done, we can attempt to install the R package that had failed to install. 
+
+## Summary
+
+Having completed the steps above, you should now have the main R packages needed to run the R code to process the instument QC data and assemble the Quarto dashboard. Congratulations on making progress!
+
+If you are installing on multiple computers and encounter dependency packages that throw errors, that you then need to type in to install, please [open an issue](https://github.com/DavidRach/InstrumentQC_Install/issues) and let me know so that I can update the list above accordingly. 
+

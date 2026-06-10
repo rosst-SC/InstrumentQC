@@ -1,0 +1,67 @@
+project:
+  type: website
+  output-dir: docs/
+website:
+  title: "InstrumentQC: How did you do this?"
+  site-path: "/InstrumentQC_Install/"
+  google-analytics:
+    tracking-id: "G-3032PQK30Y"
+  page-navigation: true
+  navbar:
+    left: 
+    - text: "Home"
+      href: index.qmd
+    - text: "Getting Started"
+      href: Installation.qmd
+    right:
+    - text: "Go Back to InstrumentQC"
+      href: https://umgccfcss.github.io/InstrumentQC/
+    - icon: github
+      href: https://github.com/DavidRach/InstrumentQC_Install
+      aria-label: GitHub
+  sidebar:
+    style: docked
+    search: true
+    contents:
+    - section: "Getting Started"
+      href: Installation.qmd
+      contents:
+      - text: "Installing Software"
+        href: Installation.qmd
+      - text: "Setting up Git and Rstudio"
+        href: GitAndRstudio.qmd
+      - text: "Installing R packages"
+        href: rpackages.qmd
+    - section: "File Paths and R Scripts"
+      href: repositoryelements.qmd
+      contents:
+      - text: "Pieces of a Bigger Picture"
+        href: repositoryelements.qmd
+      - text: "Finding File Paths"
+        href: filepaths.qmd
+      - text: "Making Changes"
+        href: MakingChanges.qmd
+      - text: "Data Transfer"
+        href: Automation.qmd
+    - section: "Building the Website"
+      href: InstrumentLayout.qmd
+      contents: 
+      - text: "Building an Instrument Webpage"
+        href: InstrumentLayout.qmd
+      - text: "Assembling the Pieces"
+        href: WebsiteCreation.qmd
+    - section: "Advanced Topics"
+      href: FutureDirections.qmd
+      contents:   
+      - text: "Future Directions"
+        href: FutureDirections.qmd
+  page-footer:
+    background: light
+    left: Made with [Quarto](https://quarto.org/)
+    right: |
+      ![GPL-3.0](/images/GPL3.png)
+      ![CC-BY-SA](/images/CCBYSA.png)
+
+format:
+  html:
+    theme: styles.scss

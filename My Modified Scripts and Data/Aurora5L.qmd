@@ -1,0 +1,353 @@
+---
+format:
+  dashboard:
+    orientation: columns
+    scrolling: true
+---
+```{r}
+#| message: FALSE
+library(dplyr)
+library(purrr)
+library(stringr)
+library(plotly)
+library(Luciernaga)
+
+Computer <- getwd()
+MainFolder <- file.path(Computer, "data")
+TheList <- c("5L")
+
+# Updating Data
+# Data processing (parsing new QC .fcs/.csv files into the Archive) is handled
+# by TheScript_5L.R, which runs on the instrument computer. This dashboard only
+# *displays* the already-processed Archive data, so the parsing calls below are
+# left commented out to keep the render reproducible and side-effect free.
+# walk(.x=TheList, MainFolder=MainFolder, .f=Luciernaga:::DailyQCParse)
+# walk(.x=TheList, .f=Luciernaga:::QCBeadParse, MainFolder=MainFolder)
+```
+
+```{r}
+MFI_5L <- Luciernaga:::CurrentData(x="5L", MainFolder=MainFolder, type = "MFI")
+Gain_5L <- Luciernaga:::CurrentData(x="5L", MainFolder=MainFolder, type = "Gain")
+TheDate <- MFI_5L %>% slice(1) %>% pull(DATE)
+```
+
+```{r}
+WindowOfInterest <- Sys.time() - months(12)
+
+MFI_5L <- MFI_5L %>% filter(DateTime >= WindowOfInterest)
+Gain_5L <- Gain_5L %>% filter(DateTime >= WindowOfInterest)
+```
+
+```{r}
+Data <- read.csv("AuroraMaintenance.csv", check.names=FALSE)
+
+Data <- Data %>% filter(!str_detect(reason, "lean"))
+
+Repair5L <- Data %>% filter(instrument %in% "5L")
+```
+
+```{r}
+x <- MFI_5L
+x <- x %>% dplyr::filter(Timepoint %in% c("Before", "After"))
+TheColumns <- x %>% select(where(~is.numeric(.)||is.integer(.))) %>% colnames()
+TheColumns <- setdiff(TheColumns, "TIME")
+TheIntermediate <- TheColumns[!str_detect(TheColumns, "Gain")]
+TheIntermediate <- TheIntermediate[!str_detect(TheIntermediate, "rCV")]
+TheColumnNames <- TheIntermediate[str_detect(TheIntermediate, "-A")]
+
+UltraVioletGains <- TheColumnNames[str_detect(TheColumnNames, "^UV")]
+VioletGains <- TheColumnNames[str_detect(TheColumnNames, "^V")]
+BlueGains <- TheColumnNames[str_detect(TheColumnNames, "^B")]
+YellowGreenGains <- TheColumnNames[str_detect(TheColumnNames, "^YG")]
+RedGains <- TheColumnNames[str_detect(TheColumnNames, "^R")]
+
+ScatterGains <- TheIntermediate[str_detect(TheIntermediate, "SC-")]
+ScatterGains <- Luciernaga:::ScalePriority(ScatterGains)
+
+UltraVioletPlotsMFI <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=UltraVioletGains,
+                      plotType = "comparison", returntype = "plots",
+                      Metadata="Timepoint", strict = TRUE, YAxisLabel = "MFI",
+                      RepairVisits=Repair5L)
+
+VioletPlotsMFI <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=VioletGains,
+                      plotType = "comparison", returntype = "plots",
+                      Metadata="Timepoint", strict = TRUE, YAxisLabel = "MFI",
+                      RepairVisits=Repair5L)
+
+BluePlotsMFI <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=BlueGains,
+                      plotType = "comparison", returntype = "plots",
+                      Metadata="Timepoint", strict = TRUE, YAxisLabel = "MFI",
+                      RepairVisits=Repair5L)
+
+YellowGreenPlotsMFI <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=YellowGreenGains,
+                      plotType = "comparison", returntype = "plots",
+                      Metadata="Timepoint", strict = TRUE, YAxisLabel = "MFI",
+                      RepairVisits=Repair5L)
+
+RedPlotsMFI <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=RedGains,
+                     plotType = "comparison", returntype = "plots",
+                     Metadata="Timepoint", strict = TRUE, YAxisLabel = "MFI",
+                     RepairVisits=Repair5L)
+
+ScatterPlotsMFI <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=ScatterGains,
+                     plotType = "comparison", returntype = "plots",
+                     Metadata="Timepoint", strict = TRUE, YAxisLabel = " ",
+                     RepairVisits=Repair5L)
+```
+
+```{r}
+x <- Gain_5L
+TheColumns <- x %>% select(where(~is.numeric(.)||is.integer(.))) %>% colnames()
+TheColumns <- setdiff(TheColumns, "TIME")
+TheColumnNames <- TheColumns[str_detect(TheColumns, "Gain")]
+
+UltraVioletGains <- TheColumnNames[str_detect(TheColumnNames, "^UV")]
+VioletGains <- TheColumnNames[str_detect(TheColumnNames, "^V")]
+BlueGains <- TheColumnNames[str_detect(TheColumnNames, "^B")]
+YellowGreenGains <- TheColumnNames[str_detect(TheColumnNames, "^YG")]
+RedGains <- TheColumnNames[str_detect(TheColumnNames, "^R")]
+
+ScatterGains <- TheColumnNames[str_detect(TheColumnNames, "SC-")]
+ScatterGains <- Luciernaga:::ScalePriority(ScatterGains)
+LaserGains <- TheColumns[str_detect(TheColumns, "Laser")]
+LaserDelayGains <- LaserGains[str_detect(LaserGains, "Delay")]
+LaserDelayGains <- Luciernaga:::ColorPriority(LaserDelayGains)
+LaserPowerGains <- LaserGains[str_detect(LaserGains, "Power")]
+LaserPowerGains <- Luciernaga:::ColorPriority(LaserPowerGains)
+ScalingGains <- TheColumns[str_detect(TheColumns, "Scaling")]
+ScalingGains <- Luciernaga:::ColorPriority(ScalingGains)
+
+UltraVioletPlotsGain <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=UltraVioletGains,
+                      plotType = "individual", returntype = "plots", YAxisLabel = "Gain",
+                      RepairVisits=Repair5L)
+
+VioletPlotsGain <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=VioletGains,
+                      plotType = "individual", returntype = "plots", strict = TRUE, YAxisLabel = "Gain",
+                      RepairVisits=Repair5L)
+
+BluePlotsGain <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=BlueGains,
+                      plotType = "individual", returntype = "plots", YAxisLabel = "Gain",
+                      RepairVisits=Repair5L)
+
+YellowGreenPlotsGain <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=YellowGreenGains,
+                      plotType = "individual", returntype = "plots", YAxisLabel = "Gain",
+                      RepairVisits=Repair5L)
+
+RedPlotsGain <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=RedGains,
+                     plotType = "individual", returntype = "plots", YAxisLabel = "Gain",
+                     RepairVisits=Repair5L)
+
+ScatterPlotsGain <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=ScatterGains,
+                     plotType = "individual", returntype = "plots", YAxisLabel = " ",
+                     RepairVisits=Repair5L)
+
+LaserDelayPlotsGain <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=LaserDelayGains,
+                     plotType = "individual", returntype = "plots", YAxisLabel = " ",
+                     RepairVisits=Repair5L)
+
+LaserPowerPlotsGain <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=LaserPowerGains,
+                                plotType = "individual", returntype = "plots",
+                                YAxisLabel = " ", RepairVisits=Repair5L)
+
+ScalingPlotsGain <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=ScalingGains,
+                     plotType = "individual", returntype = "plots", YAxisLabel = " ",
+                     RepairVisits=Repair5L)
+```
+
+```{r}
+x <- Gain_5L
+TheColumns <- x %>% select(where(~is.numeric(.)||is.integer(.))) %>% colnames()
+TheColumns <- setdiff(TheColumns, "TIME")
+
+TheColumnNames <- TheColumns[str_detect(TheColumns, "rCV")]
+UltraVioletGains <- TheColumnNames[str_detect(TheColumnNames, "^UV")]
+VioletGains <- TheColumnNames[str_detect(TheColumnNames, "^V")]
+BlueGains <- TheColumnNames[str_detect(TheColumnNames, "^B")]
+YellowGreenGains <- TheColumnNames[str_detect(TheColumnNames, "^YG")]
+RedGains <- TheColumnNames[str_detect(TheColumnNames, "^R")]
+
+ScatterGains <- TheColumnNames[str_detect(TheColumnNames, "SC-")]
+ScatterGains <- Luciernaga:::ScalePriority(ScatterGains)
+
+UltraVioletPlotsRCV <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=UltraVioletGains,
+                      plotType = "individual", returntype = "plots", YAxisLabel = "%rCV",
+                      RepairVisits=Repair5L)
+
+VioletPlotsRCV <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=VioletGains,
+                      plotType = "individual", returntype = "plots", strict=TRUE, YAxisLabel = "%rCV",
+                      RepairVisits=Repair5L)
+
+BluePlotsRCV <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=BlueGains,
+                      plotType = "individual", returntype = "plots", YAxisLabel = "%rCV",
+                      RepairVisits=Repair5L)
+
+YellowGreenPlotsRCV <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=YellowGreenGains,
+                      plotType = "individual", returntype = "plots", YAxisLabel = "%rCV",
+                      RepairVisits=Repair5L)
+
+RedPlotsRCV <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=RedGains,
+                     plotType = "individual", returntype = "plots", YAxisLabel = "%rCV",
+                     RepairVisits=Repair5L)
+
+ScatterPlotsRCV <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=ScatterGains,
+                     plotType = "individual", returntype = "plots", YAxisLabel = " ",
+                     RepairVisits=Repair5L)
+```
+
+## {.sidebar}
+Dashboard data for the **Cytek Aurora 5L** last updated on **`r TheDate`**
+
+**Note:** Cytek QC Bead Lots were switched on 12-06-2024. MFI change on this date was expected.
+
+**First Column: MFI** Median Fluorescent Intensity (MFI) values for QC beads acquired Before and After QC. Measures stability over time.
+**Second Column: Gain** Gain (Voltage) values set for instrument after QC. Changes over time reflective of laser health.
+**Third Column: rCV** Percentage Robust Coefficient of Variation (rCV) after QC. Higher values reflect decreased resolution between positive and negative for that detector.
+
+For additional information concerning individual parameter tabs, navigate to the [Help](help.qmd) page.
+
+**About**
+
+This dashboard contains the visualized QC data for the Cytek Aurora cytometers, adapted from the [UMGCC FCSS InstrumentQC](https://umgccfcss.github.io/InstrumentQC/) project.
+
+This dashboard was created with [Quarto](https://quarto.org/), based on work by [David Rach](https://github.com/DavidRach).
+
+## MFI {.tabset}
+
+```{r}
+#| title: UltraViolet
+htmltools::tagList(lapply(UltraVioletPlotsMFI, ggplotly))
+```
+
+```{r}
+#| title: Violet
+htmltools::tagList(lapply(VioletPlotsMFI, ggplotly))
+```
+
+```{r}
+#| title: Blue
+htmltools::tagList(lapply(BluePlotsMFI, ggplotly))
+```
+
+```{r}
+#| title: YellowGreen
+htmltools::tagList(lapply(YellowGreenPlotsMFI, ggplotly))
+```
+
+```{r}
+#| title: Red
+htmltools::tagList(lapply(RedPlotsMFI, ggplotly))
+```
+
+```{r}
+#| title: Scatter
+htmltools::tagList(lapply(ScatterPlotsMFI, ggplotly))
+```
+
+```{r}
+#| title: LaserPower
+htmltools::tagList(lapply(LaserPowerPlotsGain, ggplotly))
+```
+
+```{r}
+#| title: LaserDelay
+htmltools::tagList(lapply(LaserDelayPlotsGain, ggplotly))
+```
+
+```{r}
+#| title: LaserScaling
+htmltools::tagList(lapply(ScalingPlotsGain, ggplotly))
+```
+
+## Gain {.tabset}
+
+```{r}
+#| title: UltraViolet
+htmltools::tagList(lapply(UltraVioletPlotsGain, ggplotly))
+```
+
+```{r}
+#| title: Violet
+htmltools::tagList(lapply(VioletPlotsGain, ggplotly))
+```
+
+```{r}
+#| title: Blue
+htmltools::tagList(lapply(BluePlotsGain, ggplotly))
+```
+
+```{r}
+#| title: YellowGreen
+htmltools::tagList(lapply(YellowGreenPlotsGain, ggplotly))
+```
+
+```{r}
+#| title: Red
+htmltools::tagList(lapply(RedPlotsGain, ggplotly))
+```
+
+```{r}
+#| title: Scatter
+htmltools::tagList(lapply(ScatterPlotsGain, ggplotly))
+```
+
+```{r}
+#| title: LaserPower
+htmltools::tagList(lapply(LaserPowerPlotsGain, ggplotly))
+```
+
+```{r}
+#| title: LaserDelay
+htmltools::tagList(lapply(LaserDelayPlotsGain, ggplotly))
+```
+
+```{r}
+#| title: LaserScaling
+htmltools::tagList(lapply(ScalingPlotsGain, ggplotly))
+```
+
+## rCV {.tabset}
+
+```{r}
+#| title: UltraViolet
+htmltools::tagList(lapply(UltraVioletPlotsRCV, ggplotly))
+```
+
+```{r}
+#| title: Violet
+htmltools::tagList(lapply(VioletPlotsRCV, ggplotly))
+```
+
+```{r}
+#| title: Blue
+htmltools::tagList(lapply(BluePlotsRCV, ggplotly))
+```
+
+```{r}
+#| title: YellowGreen
+htmltools::tagList(lapply(YellowGreenPlotsRCV, ggplotly))
+```
+
+```{r}
+#| title: Red
+htmltools::tagList(lapply(RedPlotsRCV, ggplotly))
+```
+
+```{r}
+#| title: Scatter
+htmltools::tagList(lapply(ScatterPlotsRCV, ggplotly))
+```
+
+```{r}
+#| title: LaserPower
+htmltools::tagList(lapply(LaserPowerPlotsGain, ggplotly))
+```
+
+```{r}
+#| title: LaserDelay
+htmltools::tagList(lapply(LaserDelayPlotsGain, ggplotly))
+```
+
+```{r}
+#| title: LaserScaling
+htmltools::tagList(lapply(ScalingPlotsGain, ggplotly))
+```

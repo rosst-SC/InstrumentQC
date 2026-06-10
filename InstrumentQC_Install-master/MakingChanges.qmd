@@ -1,0 +1,129 @@
+---
+toc: TRUE
+---
+
+Still working on this one, the main ideas are below - David
+
+# Making Modifications
+
+Alright, now that you have an understanding of the individual components (Instrument.R files that process the data, Instrument.qmd files that make the website, and the Instrument folders data is transferred to) and have located the necessary file.paths, it is time to start making the necessary modifications to existing files. 
+
+First off, from your mental planning, make the process simple. If you have an instrument with similar laser configuation/manufacturer to those we have in our initial repository (Aurora 3, 4 and 5 Lasers, BDFACS CantoII, BD LSRII, BDFACs Aria II) make sure you retained their respective files and folders. This means you will only need to adjust file names and file paths (rather than having to remove interactive plotting elements later on for lasers an instrument doesn't have).
+
+Let's say you are setting up for an Aurora 5 Laser (UV-V-B-YG-R) located in your core. Go ahead and open up the respective files (TheScript_5L.R, Aurora5L.qmd). 
+
+## Instrument.R script edits
+Starting with TheScript_5L.R file, at roughly line 12, you will see the following code:
+
+```{r}
+#| eval: false
+
+# Setup in Correct Directory
+Linux <- file.path("/home", "david", "Documents", "InstrumentQC")
+Windows <- file.path("C:", "Users", "Aurora", "Documents", "InstrumentQC")
+```
+
+You will need to modify the Windows line to the identified file.path that corresponds to the forked Instrument QC folder location on that computer. 
+
+Next up, around roughly line 35, you will see the following code:
+
+```{r}
+#| eval: FALSE
+
+# Locating Archive Folder
+Instrument <- "5L"
+MainFolder <- file.path(WorkingDirectory, "data")
+WorkingFolder <- file.path(WorkingDirectory, "data", Instrument)
+StorageFolder <- file.path(WorkingFolder, "Archive")
+```
+
+In this case, since you are setting up for a 5L instrument, you can keep this designation. If this wasn't the case (or you named the Instrument Folder differently) you would need to modify the Instrument line to the correct name. You can see that it is being used in a file.path building argument resulting in the StorageFolder location. 
+
+Next up, at roughly line 74, you will see the following code:
+
+```{r}
+#| eval: false
+
+SetupFolder <- file.path("C:", "CytekbioExport", "Setup")
+TheSetupFiles <- list.files(SetupFolder, pattern="DailyQC", full.names=TRUE)
+```
+
+If your CytekbioExport folder is located in a different location, put in the correct file.path for this location!
+
+Next up, if you are retrieving .fcs files collected separately from Daily QC, you will need to modify the code roughly at line 93:
+
+```{r}
+#| eval: false
+
+# MFI Starting Locations
+
+FCSFolder <- file.path("D:", "Aurora 5_FCS Files", "Experiments", "Admin")
+MonthStyle <- format(Today, "%Y-%m")
+```
+
+Adjust the file path to the correct storage location (and user folder if not Admin). 
+
+Next up, a repeat for the CytekbioExport folder at roughly line 112:
+
+```{r}
+#| eval: false
+if (!length(PotentialAppsDays) == 0){
+    SetupFolder <- file.path("C:", "CytekbioExport")
+    TheSetupFiles <- list.files(SetupFolder, pattern="Application", full.names=TRUE)
+```
+
+Update the Setup Folder file path if needed. 
+
+And that should be it for the TheScript_5L.R file on this computer. If you have multiple instruments, move to their respective computers, open up their respective TheScript_Instrument.R files and repeat the file.path edits to match the file.paths on their respective computers. 
+
+## Instrument.qmd edits
+
+Alright, now onto the Instrument.qmd files (Aurora5L.qmd in this example):
+
+First edit can be found at roughly line 17:
+
+```{r}
+#| eval: false
+Computer <- getwd()
+MainFolder <- file.path(Computer, "data")
+TheList <- c("5L")
+
+# Updating Data
+walk(.x=TheList, MainFolder=MainFolder, .f=Luciernaga:::DailyQCParse)
+walk(.x=TheList, .f=Luciernaga:::QCBeadParse, MainFolder=MainFolder)
+```
+
+Make sure TheList is set to the correct name for the instrument folder (ie, 5L or whatever the case may be).
+
+Same thing for a couple lines down, make sure the names match that of the instrument folder:
+
+```{r}
+#| eval: false
+
+MFI_5L <- Luciernaga:::CurrentData(x="5L", MainFolder=MainFolder, type = "MFI")
+Gain_5L <- Luciernaga:::CurrentData(x="5L", MainFolder=MainFolder, type = "Gain")
+TheDate <- MFI_5L %>% slice(1) %>% pull(DATE)
+```
+
+And if you have a Maintenance.CSV, this line too should match the instrument name:
+
+```{r}
+#| eval: false
+Data <- read.csv("AuroraMaintenance.csv", check.names=FALSE)
+
+Data <- Data %>% filter(!str_detect(reason, "lean"))
+
+Repair5L <- Data %>% filter(instrument %in% "5L")
+```
+
+And I believe that is it for now on these files (let me know if I missed one that ends up causing a failed run). 
+
+# Processing Existing Data
+
+Now that you have edited all the file.paths, it is time for the moment of truth. Open the TheScript_Instrument.R file. In RStudio, there should be a button at the top that is called source. If not, highlight the entire document of code and hit Ctrl+Enter, which will send the code to the console to begin execution. 
+
+If all goes smoothly, the script will find all the existing data within their current folders, copy them over, and begin the process of processing them. Once finished, the processed data will be present within the Instruments Archive folder. Go ahead and check to see if it is the case. If so, congrats! You did it!
+
+If not, you will likely have either encountered an error message at some point, and the time for troubleshooting the error message begins. If you didn't get any error messages, it is most likely an issue of the wrong file.path. Try to problem solve a bit, and if still can't get it to work, open an issue and I will be more than glad to help you troubleshoot what might be occuring. 
+
+
