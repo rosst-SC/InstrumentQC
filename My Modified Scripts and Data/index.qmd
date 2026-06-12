@@ -54,6 +54,20 @@ The5L <- Luciernaga:::VisualQCSummary(x=Gain_5L, detectorType=IndicatorDetectors
 
 Table3L <- Luciernaga:::SmallTable(data=The3L)
 Table5L <- Luciernaga:::SmallTable(data=The5L)
+
+# Cytek Aurora EVO (third instrument). Its processed Archive data may not be
+# present yet (SpectroFlo 4.x parsing is pending), so build its table only when
+# the Gain archive exists; otherwise leave it NULL for a placeholder.
+EVOGainFile <- list.files(file.path(MainFolder, "EVO", "Archive"),
+                          pattern = "Archived", full.names = TRUE)
+HasEVO <- length(EVOGainFile) == 1 && nrow(read.csv(EVOGainFile[1], nrow = 1)) > 0
+if (HasEVO) {
+  Gain_EVO <- Luciernaga:::CurrentData(x="EVO", MainFolder=MainFolder, type = "Gain")
+  TheEVO <- Luciernaga:::VisualQCSummary(x=Gain_EVO, detectorType=IndicatorDetectors)
+  TableEVO <- Luciernaga:::SmallTable(data=TheEVO)
+} else {
+  TableEVO <- NULL
+}
 ```
 
 ```{r}
@@ -68,7 +82,7 @@ ShinyData <- read.csv(HistoricalPath, check.names = FALSE)
 ```
 
 ```{r}
-x <-  list("3L", "5L")
+x <- as.list(intersect(c("3L", "5L", "EVO"), unique(ShinyData$Instrument)))
 
 DataForPlot <- Luciernaga:::QCHistoryArchive(x=x, historydata=ShinyData, timewindow=24)
 Transposed <- t(DataForPlot)
@@ -97,6 +111,16 @@ TheStatus3L <- Luciernaga:::CurrentStatus(x="3L", data=Data) %>% Luciernaga:::In
 TheColor3L <- Luciernaga:::CurrentStatus(x="3L", data=Data) %>% Luciernaga:::InstrumentColor(.)
 TheStatus5L <- Luciernaga:::CurrentStatus(x="5L", data=Data) %>% Luciernaga:::InstrumentText(.)
 TheColor5L <- Luciernaga:::CurrentStatus(x="5L", data=Data) %>% Luciernaga:::InstrumentColor(.)
+
+# Cytek Aurora EVO status: real status once it appears in HistoricalData,
+# otherwise an "Awaiting data" placeholder so the home page renders cleanly.
+if ("EVO" %in% names(Data)) {
+  TheStatusEVO <- Luciernaga:::CurrentStatus(x="EVO", data=Data) %>% Luciernaga:::InstrumentText(.)
+  TheColorEVO  <- Luciernaga:::CurrentStatus(x="EVO", data=Data) %>% Luciernaga:::InstrumentColor(.)
+} else {
+  TheStatusEVO <- "Awaiting data"
+  TheColorEVO  <- "secondary"
+}
 ```
 
 ## {.sidebar}
@@ -122,7 +146,7 @@ This dashboard was created with [Quarto](https://quarto.org/) and is maintained 
 
 ## First {width="30%"}
 
-### Row {height="50%"}
+### Row {height="33%"}
 
 #### Column
 
@@ -139,7 +163,7 @@ list(value = paste0("QC Status: ", TheStatus3L),
 #### Column
 
 
-### Row  {height="50%"}
+### Row  {height="33%"}
 
 #### Column
 
@@ -154,6 +178,21 @@ list(value = paste0("QC Status: ", TheStatus5L),
 
 #### Column {scrolling=FALSE}
 
+### Row {height="34%"}
+
+#### Column
+
+```{r}
+#| content: valuebox
+#| title: "EVO"
+#| icon: cup-hot
+
+list(value = paste0("QC Status: ", TheStatusEVO),
+     color = TheColorEVO)
+```
+
+#### Column
+
 ## Second {.tabset}
 ```{r}
 #| title: 3L
@@ -164,6 +203,12 @@ Table3L
 ```{r}
 #| title: 5L
 Table5L
+```
+
+
+```{r}
+#| title: EVO
+if (!is.null(TableEVO)) TableEVO else htmltools::HTML("<em>Awaiting first QC data</em>")
 ```
 
 

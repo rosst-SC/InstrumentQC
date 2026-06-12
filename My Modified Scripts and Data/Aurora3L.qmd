@@ -169,7 +169,9 @@ For additional information concerning individual parameter tabs, navigate to the
 
 **About**
 
-This dashboard contains the visualized QC data for the Cytek Aurora cytometers, adapted from the [UMGCC FCSS InstrumentQC](https://umgccfcss.github.io/InstrumentQC/) project.
+This dashboard contains the visualized QC data for the Cytek cytometers at the Sydney Cytometry Core Facility
+
+For additional flow cytometry resources, visit our [website](https://sydneycytometry.org.au/)
 
 This dashboard was created with [Quarto](https://quarto.org/), based on work by [David Rach](https://github.com/DavidRach).
 

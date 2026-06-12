@@ -1,11 +1,12 @@
 ---
+title: "Cytek Aurora EVO"
 format:
   dashboard:
     orientation: columns
     scrolling: true
 ---
 ```{r}
-#| message: FALSE
+#| include: false
 library(dplyr)
 library(purrr)
 library(stringr)
@@ -14,89 +15,49 @@ library(Luciernaga)
 
 Computer <- getwd()
 MainFolder <- file.path(Computer, "data")
-TheList <- c("5L")
 
-# Updating Data
-# Data processing (parsing new QC .fcs/.csv files into the Archive) is handled
-# by TheScript_5L.R, which runs on the instrument computer. This dashboard only
-# *displays* the already-processed Archive data, so the parsing calls below are
-# left commented out to keep the render reproducible and side-effect free.
-# walk(.x=TheList, MainFolder=MainFolder, .f=Luciernaga:::DailyQCParse)
-# walk(.x=TheList, .f=Luciernaga:::QCBeadParse, MainFolder=MainFolder)
+# The Aurora EVO runs SpectroFlo 4.x. Its Gain/rCV Archive (ArchivedDataEVO.csv)
+# is produced from the DailyQC reports by the 4.x parser; the MFI/Bead Archive
+# (BeadDataEVO.csv) requires Before/After QC bead .fcs files and may not be
+# present yet. The page shows whatever exists: Gain + rCV whenever the gain
+# archive is present, and the MFI column once bead data lands.
+ArchiveDir <- file.path(MainFolder, "EVO", "Archive")
+GainFile <- list.files(ArchiveDir, pattern = "Archived", full.names = TRUE)
+MFIFile  <- list.files(ArchiveDir, pattern = "Bead",     full.names = TRUE)
+HasGain <- length(GainFile) == 1 && nrow(read.csv(GainFile[1], nrow = 1)) > 0
+HasMFI  <- length(MFIFile)  == 1 && nrow(read.csv(MFIFile[1],  nrow = 1)) > 0
+HasData <- HasGain
 ```
 
 ```{r}
-MFI_5L <- Luciernaga:::CurrentData(x="5L", MainFolder=MainFolder, type = "MFI")
-Gain_5L <- Luciernaga:::CurrentData(x="5L", MainFolder=MainFolder, type = "Gain")
-TheDate <- MFI_5L %>% slice(1) %>% pull(DATE)
+#| eval: !expr '!HasData'
+#| content: valuebox
+#| title: "Cytek Aurora EVO"
+#| icon: hourglass-split
+#| color: secondary
+list(value = "Awaiting first QC data")
 ```
 
 ```{r}
+#| include: false
+# No gain archive yet -> clean page (sidebar + placeholder above) and stop.
+if (!HasData) knitr::knit_exit()
+```
+
+```{r}
+Gain_EVO <- Luciernaga:::CurrentData(x="EVO", MainFolder=MainFolder, type = "Gain")
+TheDate <- Gain_EVO %>% slice(1) %>% pull(DateTime) %>% as.Date()
+
 WindowOfInterest <- Sys.time() - months(12)
+Gain_EVO <- Gain_EVO %>% filter(DateTime >= WindowOfInterest)
 
-MFI_5L <- MFI_5L %>% filter(DateTime >= WindowOfInterest)
-Gain_5L <- Gain_5L %>% filter(DateTime >= WindowOfInterest)
-```
-
-```{r}
 Data <- read.csv("AuroraMaintenance.csv", check.names=FALSE)
-
 Data <- Data %>% filter(!str_detect(reason, "lean"))
-
-Repair5L <- Data %>% filter(instrument %in% "5L")
+RepairEVO <- Data %>% filter(instrument %in% "EVO")
 ```
 
 ```{r}
-x <- MFI_5L
-x <- x %>% dplyr::filter(Timepoint %in% c("Before", "After"))
-TheColumns <- x %>% select(where(~is.numeric(.)||is.integer(.))) %>% colnames()
-TheColumns <- setdiff(TheColumns, "TIME")
-TheIntermediate <- TheColumns[!str_detect(TheColumns, "Gain")]
-TheIntermediate <- TheIntermediate[!str_detect(TheIntermediate, "rCV")]
-TheColumnNames <- TheIntermediate[str_detect(TheIntermediate, "-A")]
-
-UltraVioletGains <- TheColumnNames[str_detect(TheColumnNames, "^UV")]
-VioletGains <- TheColumnNames[str_detect(TheColumnNames, "^V")]
-BlueGains <- TheColumnNames[str_detect(TheColumnNames, "^B")]
-YellowGreenGains <- TheColumnNames[str_detect(TheColumnNames, "^YG")]
-RedGains <- TheColumnNames[str_detect(TheColumnNames, "^R")]
-
-ScatterGains <- TheIntermediate[str_detect(TheIntermediate, "SC-")]
-ScatterGains <- Luciernaga:::ScalePriority(ScatterGains)
-
-UltraVioletPlotsMFI <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=UltraVioletGains,
-                      plotType = "comparison", returntype = "plots",
-                      Metadata="Timepoint", strict = TRUE, YAxisLabel = "MFI",
-                      RepairVisits=Repair5L)
-
-VioletPlotsMFI <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=VioletGains,
-                      plotType = "comparison", returntype = "plots",
-                      Metadata="Timepoint", strict = TRUE, YAxisLabel = "MFI",
-                      RepairVisits=Repair5L)
-
-BluePlotsMFI <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=BlueGains,
-                      plotType = "comparison", returntype = "plots",
-                      Metadata="Timepoint", strict = TRUE, YAxisLabel = "MFI",
-                      RepairVisits=Repair5L)
-
-YellowGreenPlotsMFI <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=YellowGreenGains,
-                      plotType = "comparison", returntype = "plots",
-                      Metadata="Timepoint", strict = TRUE, YAxisLabel = "MFI",
-                      RepairVisits=Repair5L)
-
-RedPlotsMFI <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=RedGains,
-                     plotType = "comparison", returntype = "plots",
-                     Metadata="Timepoint", strict = TRUE, YAxisLabel = "MFI",
-                     RepairVisits=Repair5L)
-
-ScatterPlotsMFI <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=ScatterGains,
-                     plotType = "comparison", returntype = "plots",
-                     Metadata="Timepoint", strict = TRUE, YAxisLabel = " ",
-                     RepairVisits=Repair5L)
-```
-
-```{r}
-x <- Gain_5L
+x <- Gain_EVO
 TheColumns <- x %>% select(where(~is.numeric(.)||is.integer(.))) %>% colnames()
 TheColumns <- setdiff(TheColumns, "TIME")
 TheColumnNames <- TheColumns[str_detect(TheColumns, "Gain")]
@@ -119,43 +80,43 @@ ScalingGains <- Luciernaga:::ColorPriority(ScalingGains)
 
 UltraVioletPlotsGain <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=UltraVioletGains,
                       plotType = "individual", returntype = "plots", YAxisLabel = "Gain",
-                      RepairVisits=Repair5L)
+                      RepairVisits=RepairEVO)
 
 VioletPlotsGain <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=VioletGains,
                       plotType = "individual", returntype = "plots", strict = TRUE, YAxisLabel = "Gain",
-                      RepairVisits=Repair5L)
+                      RepairVisits=RepairEVO)
 
 BluePlotsGain <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=BlueGains,
                       plotType = "individual", returntype = "plots", YAxisLabel = "Gain",
-                      RepairVisits=Repair5L)
+                      RepairVisits=RepairEVO)
 
 YellowGreenPlotsGain <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=YellowGreenGains,
                       plotType = "individual", returntype = "plots", YAxisLabel = "Gain",
-                      RepairVisits=Repair5L)
+                      RepairVisits=RepairEVO)
 
 RedPlotsGain <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=RedGains,
                      plotType = "individual", returntype = "plots", YAxisLabel = "Gain",
-                     RepairVisits=Repair5L)
+                     RepairVisits=RepairEVO)
 
 ScatterPlotsGain <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=ScatterGains,
                      plotType = "individual", returntype = "plots", YAxisLabel = " ",
-                     RepairVisits=Repair5L)
+                     RepairVisits=RepairEVO)
 
 LaserDelayPlotsGain <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=LaserDelayGains,
                      plotType = "individual", returntype = "plots", YAxisLabel = " ",
-                     RepairVisits=Repair5L)
+                     RepairVisits=RepairEVO)
 
 LaserPowerPlotsGain <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=LaserPowerGains,
                                 plotType = "individual", returntype = "plots",
-                                YAxisLabel = " ", RepairVisits=Repair5L)
+                                YAxisLabel = " ", RepairVisits=RepairEVO)
 
 ScalingPlotsGain <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=ScalingGains,
                      plotType = "individual", returntype = "plots", YAxisLabel = " ",
-                     RepairVisits=Repair5L)
+                     RepairVisits=RepairEVO)
 ```
 
 ```{r}
-x <- Gain_5L
+x <- Gain_EVO
 TheColumns <- x %>% select(where(~is.numeric(.)||is.integer(.))) %>% colnames()
 TheColumns <- setdiff(TheColumns, "TIME")
 
@@ -171,33 +132,74 @@ ScatterGains <- Luciernaga:::ScalePriority(ScatterGains)
 
 UltraVioletPlotsRCV <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=UltraVioletGains,
                       plotType = "individual", returntype = "plots", YAxisLabel = "%rCV",
-                      RepairVisits=Repair5L)
+                      RepairVisits=RepairEVO)
 
 VioletPlotsRCV <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=VioletGains,
                       plotType = "individual", returntype = "plots", strict=TRUE, YAxisLabel = "%rCV",
-                      RepairVisits=Repair5L)
+                      RepairVisits=RepairEVO)
 
 BluePlotsRCV <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=BlueGains,
                       plotType = "individual", returntype = "plots", YAxisLabel = "%rCV",
-                      RepairVisits=Repair5L)
+                      RepairVisits=RepairEVO)
 
 YellowGreenPlotsRCV <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=YellowGreenGains,
                       plotType = "individual", returntype = "plots", YAxisLabel = "%rCV",
-                      RepairVisits=Repair5L)
+                      RepairVisits=RepairEVO)
 
 RedPlotsRCV <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=RedGains,
                      plotType = "individual", returntype = "plots", YAxisLabel = "%rCV",
-                     RepairVisits=Repair5L)
+                     RepairVisits=RepairEVO)
 
 ScatterPlotsRCV <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=ScatterGains,
                      plotType = "individual", returntype = "plots", YAxisLabel = " ",
-                     RepairVisits=Repair5L)
+                     RepairVisits=RepairEVO)
+```
+
+```{r}
+#| eval: !expr HasMFI
+# MFI / bead column — only built once BeadDataEVO.csv (Before/After QC beads) exists.
+MFI_EVO <- Luciernaga:::CurrentData(x="EVO", MainFolder=MainFolder, type = "MFI")
+MFI_EVO <- MFI_EVO %>% filter(DateTime >= WindowOfInterest)
+
+xm <- MFI_EVO %>% dplyr::filter(Timepoint %in% c("Before", "After"))
+TheColumns <- xm %>% select(where(~is.numeric(.)||is.integer(.))) %>% colnames()
+TheColumns <- setdiff(TheColumns, "TIME")
+TheIntermediate <- TheColumns[!str_detect(TheColumns, "Gain")]
+TheIntermediate <- TheIntermediate[!str_detect(TheIntermediate, "rCV")]
+TheColumnNames <- TheIntermediate[str_detect(TheIntermediate, "-A")]
+
+UltraVioletGains <- TheColumnNames[str_detect(TheColumnNames, "^UV")]
+VioletGains <- TheColumnNames[str_detect(TheColumnNames, "^V")]
+BlueGains <- TheColumnNames[str_detect(TheColumnNames, "^B")]
+YellowGreenGains <- TheColumnNames[str_detect(TheColumnNames, "^YG")]
+RedGains <- TheColumnNames[str_detect(TheColumnNames, "^R")]
+ScatterGains <- TheIntermediate[str_detect(TheIntermediate, "SC-")]
+ScatterGains <- Luciernaga:::ScalePriority(ScatterGains)
+
+UltraVioletPlotsMFI <- QC_Plots(x=xm, FailedFlag=TRUE, MeasurementType=UltraVioletGains,
+                      plotType = "comparison", returntype = "plots",
+                      Metadata="Timepoint", strict = TRUE, YAxisLabel = "MFI", RepairVisits=RepairEVO)
+VioletPlotsMFI <- QC_Plots(x=xm, FailedFlag=TRUE, MeasurementType=VioletGains,
+                      plotType = "comparison", returntype = "plots",
+                      Metadata="Timepoint", strict = TRUE, YAxisLabel = "MFI", RepairVisits=RepairEVO)
+BluePlotsMFI <- QC_Plots(x=xm, FailedFlag=TRUE, MeasurementType=BlueGains,
+                      plotType = "comparison", returntype = "plots",
+                      Metadata="Timepoint", strict = TRUE, YAxisLabel = "MFI", RepairVisits=RepairEVO)
+YellowGreenPlotsMFI <- QC_Plots(x=xm, FailedFlag=TRUE, MeasurementType=YellowGreenGains,
+                      plotType = "comparison", returntype = "plots",
+                      Metadata="Timepoint", strict = TRUE, YAxisLabel = "MFI", RepairVisits=RepairEVO)
+RedPlotsMFI <- QC_Plots(x=xm, FailedFlag=TRUE, MeasurementType=RedGains,
+                      plotType = "comparison", returntype = "plots",
+                      Metadata="Timepoint", strict = TRUE, YAxisLabel = "MFI", RepairVisits=RepairEVO)
+ScatterPlotsMFI <- QC_Plots(x=xm, FailedFlag=TRUE, MeasurementType=ScatterGains,
+                      plotType = "comparison", returntype = "plots",
+                      Metadata="Timepoint", strict = TRUE, YAxisLabel = " ", RepairVisits=RepairEVO)
 ```
 
 ## {.sidebar}
-Dashboard data for the **Cytek Aurora 5L** last updated on **`r TheDate`**
+Dashboard data for the **Cytek Aurora EVO** last updated on **`r TheDate`**
 
-**Note:** Cytek QC Bead Lots were switched on 12-06-2024. MFI change on this date was expected.
+**Note:** The EVO runs SpectroFlo 4.x. Gain and %rCV are shown from the daily QC reports. The MFI column appears once before/after QC bead data is available.
 
 **First Column: MFI** Median Fluorescent Intensity (MFI) values for QC beads acquired Before and After QC. Measures stability over time.
 **Second Column: Gain** Gain (Voltage) values set for instrument after QC. Changes over time reflective of laser health.
@@ -207,57 +209,52 @@ For additional information concerning individual parameter tabs, navigate to the
 
 **About**
 
-This dashboard contains the visualized QC data for the Cytek cytometers at the Sydney Cytometry Core Facility
-
-For additional flow cytometry resources, visit our [website](https://sydneycytometry.org.au/)
+This dashboard contains the visualized QC data for the Cytek Aurora cytometers, adapted from the [UMGCC FCSS InstrumentQC](https://umgccfcss.github.io/InstrumentQC/) project.
 
 This dashboard was created with [Quarto](https://quarto.org/), based on work by [David Rach](https://github.com/DavidRach).
 
 ## MFI {.tabset}
 
 ```{r}
+#| eval: !expr '!HasMFI'
+#| title: MFI
+htmltools::HTML("<p><em>Awaiting before/after QC bead <code>.fcs</code> files. Once <code>BeadDataEVO.csv</code> is present in <code>data/EVO/Archive/</code>, the MFI tabs (per laser) appear here automatically.</em></p>")
+```
+
+```{r}
+#| eval: !expr HasMFI
 #| title: UltraViolet
 htmltools::tagList(lapply(UltraVioletPlotsMFI, ggplotly))
 ```
 
 ```{r}
+#| eval: !expr HasMFI
 #| title: Violet
 htmltools::tagList(lapply(VioletPlotsMFI, ggplotly))
 ```
 
 ```{r}
+#| eval: !expr HasMFI
 #| title: Blue
 htmltools::tagList(lapply(BluePlotsMFI, ggplotly))
 ```
 
 ```{r}
+#| eval: !expr HasMFI
 #| title: YellowGreen
 htmltools::tagList(lapply(YellowGreenPlotsMFI, ggplotly))
 ```
 
 ```{r}
+#| eval: !expr HasMFI
 #| title: Red
 htmltools::tagList(lapply(RedPlotsMFI, ggplotly))
 ```
 
 ```{r}
+#| eval: !expr HasMFI
 #| title: Scatter
 htmltools::tagList(lapply(ScatterPlotsMFI, ggplotly))
-```
-
-```{r}
-#| title: LaserPower
-htmltools::tagList(lapply(LaserPowerPlotsGain, ggplotly))
-```
-
-```{r}
-#| title: LaserDelay
-htmltools::tagList(lapply(LaserDelayPlotsGain, ggplotly))
-```
-
-```{r}
-#| title: LaserScaling
-htmltools::tagList(lapply(ScalingPlotsGain, ggplotly))
 ```
 
 ## Gain {.tabset}

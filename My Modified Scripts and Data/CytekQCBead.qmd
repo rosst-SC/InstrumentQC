@@ -3,8 +3,6 @@ format:
   dashboard:
     orientation: rows
     scrolling: true
-project:
-  output-dir: docs/
 ---
 
 ```{r}
@@ -14,27 +12,32 @@ project:
 library(stringr)
 library(purrr)
 library(dplyr)
-library(Luciernaga)
-library(lubridate)
-library(git2r)
+library(ggplot2)
+library(ggbeeswarm)
 ```
 
 ```{r}
-Lot1001 <- read.csv("QCBeadLot1001.csv", check.names=FALSE) %>% mutate(Lot = 1001) %>% relocate(Lot, .before=1)
-Lot1002 <- read.csv("QCBeadLot1002.csv", check.names=FALSE) %>% mutate(Lot = 1002) %>% relocate(Lot, .before=1)
-Lot2002 <- read.csv("QCBeadLot2002.csv", check.names=FALSE) %>% mutate(Lot = 2002) %>% relocate(Lot, .before=1)
-Lot2003 <- read.csv("QCBeadLot2003.csv", check.names=FALSE) %>% mutate(Lot = 2003) %>% relocate(Lot, .before=1)
-Lot2004 <- read.csv("QCBeadLot2004.csv", check.names=FALSE) %>% mutate(Lot = 2004) %>% relocate(Lot, .before=1)
-Lot2005 <- read.csv("QCBeadLot2005.csv", check.names=FALSE) %>% mutate(Lot = 2005) %>% relocate(Lot, .before=1)
-Lot2006 <- read.csv("QCBeadLot2006.csv", check.names=FALSE) %>% mutate(Lot = 2006) %>% relocate(Lot, .before=1)
+# Auto-discover every QCBeadLot*.csv in the project folder, so new lots are
+# picked up automatically just by dropping the file in (no code edits needed).
+# The lot CSVs are inconsistent (some have a UTF-8 BOM, the 2xxx lots misspell
+# "SensitivitySepc", the old 1xxx lots have leading spaces in their headers and
+# predate the CytekAssaySetting metric, and column sets vary), so each file is
+# normalised before combining with bind_rows() (which tolerates differing cols).
+LotFiles <- sort(list.files(pattern = "^QCBeadLot[0-9]+[.]csv$"))
 
-OldLot <- rbind(Lot1001, Lot1002) %>% mutate("CytekAssaySetting"=0)
+ReadLot <- function(f) {
+  d <- read.csv(f, check.names = FALSE, fileEncoding = "UTF-8-BOM")   # strip any BOM
+  names(d) <- trimws(names(d))                                        # old lots have padded headers
+  if ("SensitivitySepc" %in% names(d)) {
+    d <- rename(d, SensitivitySpec = SensitivitySepc)                 # normalise the misspelling
+  }
+  d <- mutate(d, across(where(is.character), trimws))                 # trim padded values (old lots)
+  d$Lot <- as.integer(str_extract(f, "[0-9]+"))
+  if (!"CytekAssaySetting" %in% names(d)) d$CytekAssaySetting <- 0    # old lots predate this metric
+  d
+}
 
-Data <- rbind(Lot2002, Lot2003, Lot2004, Lot2005, Lot2006) 
-
-Data <- Data %>% rename(SensitivitySpec = SensitivitySepc)
-
-Data <- rbind(OldLot, Data)
+Data <- map(LotFiles, ReadLot) |> bind_rows() |> relocate(Lot, .before = 1)
 ```
 
 ```{r}
@@ -74,13 +77,9 @@ Data <- Data %>% mutate(Detector=paste0(Laser1, DetectorNumber)) %>% relocate(De
 ```
 
 ```{r}
-library(ggplot2)
-library(ggbeeswarm)
-
 DataOrder <- Data %>% filter(Lot %in% "2005") %>% pull(Detector)
 
 Data$Lot <- as.character(Data$Lot)
-#Data$Detector <- factor(Data$Detector, levels=DataOrder)
 
 Data <- Data %>% mutate(Detector = factor(Detector, levels = DataOrder))
 ```
@@ -108,51 +107,13 @@ RAB <- ggplot(Data, aes(x = Detector, y = RAB, fill = Laser, shape = Lot)) +
 ```
 
 ```{r}
-#| eval: false
-ggplot(Data, aes(x = Detector, y = rCVSpec, fill = Lot, shape = Lot)) +
-  geom_beeswarm(size = 3, dodge.width = 0.1) +
-  scale_fill_manual(values = c("UV" = "#7F00FF", "Violet" = "#FFC0CB", "Blue" = "#0000FF",
-                               "YellowGreen" = "#9ACD32", "Red" = "#FF0000")) +
-  scale_shape_manual(values = rep(22, length(unique(Data$Lot)))) +
-  theme_minimal() +
-  labs(x = "Detector", y = "rCVSpec", title = "Cytek QC Bead Lot") +
-  theme(legend.position = "right", axis.text.x = element_text(angle = 60, hjust = 1, vjust = 1, size=7))
-```
-
-```{r}
-#| eval: false
-ggplot(Data, aes(x = Detector, y = GainChangeSpec, fill = Lot, shape = Lot)) +
-  geom_beeswarm(size = 3, dodge.width = 0.1) +
-  scale_fill_manual(values = c("UV" = "#7F00FF", "Violet" = "#FFC0CB", "Blue" = "#0000FF",
-                               "YellowGreen" = "#9ACD32", "Red" = "#FF0000")) +
-  scale_shape_manual(values = rep(22, length(unique(Data$Lot)))) +
-  theme_minimal() +
-  labs(x = "Detector", y = "GainChangeSpec", title = "Cytek QC Bead Lot") +
-  theme(legend.position = "right", axis.text.x = element_text(angle = 60, hjust = 1, vjust = 1, size=7))
-
-```
-
-```{r}
-#| eval: false
-ggplot(Data, aes(x = Detector, y = SensitivitySepc, fill = Lot, shape = Lot)) +
-  geom_beeswarm(size = 3, dodge.width = 0.1) +
-  scale_fill_manual(values = c("UV" = "#7F00FF", "Violet" = "#FFC0CB", "Blue" = "#0000FF",
-                               "YellowGreen" = "#9ACD32", "Red" = "#FF0000")) +
-  scale_shape_manual(values = rep(22, length(unique(Data$Lot)))) +
-  scale_color_manual(values = rep(22, length(unique(Data$Lot)))) +
-  theme_minimal() +
-  labs(x = "Detector", y = "SensitivitySpec", title = "Cytek QC Bead Lot") +
-  theme(legend.position = "right", axis.text.x = element_text(angle = 60, hjust = 1, vjust = 1, size=7))
-```
-
-```{r}
 CytekAssaySetting <- ggplot(Data, aes(x = Detector, y = CytekAssaySetting, fill = Laser, shape = Lot)) +
   geom_beeswarm(size = 3, dodge.width = 0.1) +
   scale_fill_manual(values = c("UV" = "#7F00FF", "Violet" = "#FFC0CB", "Blue" = "#0000FF",
                                "YellowGreen" = "#9ACD32", "Red" = "#FF0000")) +
   scale_shape_manual(values = rep(22, length(unique(Data$Lot)))) +
   labs(x = "Detector", y = "Cytek Assay Setting", title = "") + theme_bw() +
-  theme(legend.position = "right", axis.text.x = element_text(angle = 60, hjust = 1, vjust = 1, size=7)) 
+  theme(legend.position = "right", axis.text.x = element_text(angle = 60, hjust = 1, vjust = 1, size=7))
 ```
 
 ## MFI
@@ -172,4 +133,3 @@ plotly::ggplotly(RAB)
 ```{r}
 plotly::ggplotly(CytekAssaySetting)
 ```
-

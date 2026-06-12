@@ -5,6 +5,8 @@ project:
     - index.qmd
     - Aurora3L.qmd
     - Aurora5L.qmd
+    - AuroraEVO.qmd
+    - CytekQCBead.qmd
     - help.qmd
     - 404.qmd
 website:
@@ -27,7 +29,11 @@ website:
         href: Aurora3L.qmd
       - text: "Cytek Aurora 5L"
         href: Aurora5L.qmd
+      - text: "Cytek Aurora EVO"
+        href: AuroraEVO.qmd
     right:
+    - text: "QC Bead Lots"
+      href: CytekQCBead.qmd
     - text: "Help"
       href: help.qmd
   page-footer:
