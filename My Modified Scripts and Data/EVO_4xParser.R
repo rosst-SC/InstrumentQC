@@ -78,10 +78,14 @@ QC_FilePrep_DailyQC_4x <- function(x) {
                                mutate(across(everything(), ~FALSE, .names = "Flag-{.col}"))
   LaserDelay <- LaserFrame %>% select(Laser, `Laser Delay`) %>%
     pivot_wider(names_from = Laser, values_from = `Laser Delay`, names_glue = "{Laser}-Laser Delay") %>% addflags()
-  LaserPower <- LaserFrame %>% select(Laser, `Laser Power`) %>%
-    pivot_wider(names_from = Laser, values_from = `Laser Power`, names_glue = "{Laser}-Laser Power") %>% addflags()
   LaserArea  <- LaserFrame %>% select(Laser, `Area Scaling Factor`) %>%
     pivot_wider(names_from = Laser, values_from = `Area Scaling Factor`, names_glue = "{Laser}-Area Scaling Factor") %>% addflags()
+  # Laser Power is present in some 4.x reports (e.g. EVO) but not others (some 3L/5L); optional.
+  LaserPower <- NULL
+  if ("Laser Power" %in% colnames(LaserFrame)) {
+    LaserPower <- LaserFrame %>% select(Laser, `Laser Power`) %>%
+      pivot_wider(names_from = Laser, values_from = `Laser Power`, names_glue = "{Laser}-Laser Power") %>% addflags()
+  }
 
   ## FSC area scaling, flow rate, temperature (Flow Rate + Temperature share a line in 4.x)
   fsc_line  <- strsplit(ReadInfo[fsc_idx], ",")[[1]]
@@ -90,7 +94,8 @@ QC_FilePrep_DailyQC_4x <- function(x) {
   FlowRate    <- data.frame(FlowRate = as.numeric(flow_line[2]),             `Flag-FlowRate` = FALSE,            check.names = FALSE)
   Temperature <- data.frame(Temperature = as.numeric(flow_line[4]),          `Flag-Temperature` = FALSE,        check.names = FALSE)
 
-  cbind(Assembly, LaserDelay, LaserPower, LaserArea, FSCArea, FlowRate, Temperature)
+  do.call(cbind, Filter(Negate(is.null),
+    list(Assembly, LaserDelay, LaserArea, LaserPower, FSCArea, FlowRate, Temperature)))
 }
 
 # ---- Driver (skipped when this file is sourced, e.g. source(..., local) -----
