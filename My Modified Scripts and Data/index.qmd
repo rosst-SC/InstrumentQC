@@ -19,28 +19,19 @@ TheList <- c("3L", "5L")
 
 # Updating Data
 #walk(.x=TheList, MainFolder=MainFolder, .f=Luciernaga:::DailyQCParse)
-#walk(.x=TheList, .f=Luciernaga:::QCBeadParse, MainFolder=MainFolder)
 ```
 
 ```{r}
-MFI_3L <- Luciernaga:::CurrentData(x="3L", MainFolder=MainFolder, type = "MFI")
 Gain_3L <- Luciernaga:::CurrentData(x="3L", MainFolder=MainFolder, type = "Gain")
-
-MFI_5L <- Luciernaga:::CurrentData(x="5L", MainFolder=MainFolder, type = "MFI")
 Gain_5L <- Luciernaga:::CurrentData(x="5L", MainFolder=MainFolder, type = "Gain")
-
 ```
 
 ```{r}
 #| eval: false
 WindowOfInterest <- Sys.time() - months(24)
 
-MFI_3L <- MFI_3L |> filter(DateTime >= WindowOfInterest)
 Gain_3L <- Gain_3L |> filter(DateTime >= WindowOfInterest)
-
-MFI_5L <- MFI_5L |> filter(DateTime >= WindowOfInterest)
 Gain_5L <- Gain_5L |> filter(DateTime >= WindowOfInterest)
-
 ```
 
 ```{r}

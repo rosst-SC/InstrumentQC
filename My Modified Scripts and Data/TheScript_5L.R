@@ -47,16 +47,6 @@ PotentialGainDays <- seq.Date(from = LastGainItem, to = Today, by = "day")
 GainRemoveIndex <- which(PotentialGainDays == LastGainItem)
 PotentialGainDays <- PotentialGainDays[-GainRemoveIndex]
 
-# MFIs
-MFIs <- list.files(StorageFolder, pattern="Bead", full.names=TRUE)
-MFIs <- read.csv(MFIs[1], check.names=FALSE)
-LastMFIItem <- MFIs |> dplyr::slice(1) |> dplyr::pull(DateTime)
-LastMFIItem <- lubridate::ymd_hms(LastMFIItem)
-LastMFIItem <- as.Date(LastMFIItem)
-PotentialMFIDays <- seq.Date(from = LastMFIItem, to = Today, by = "day")
-MFIRemoveIndex <- which(PotentialMFIDays == LastMFIItem)
-PotentialMFIDays <- PotentialMFIDays[-MFIRemoveIndex]
-  
 # Usage
 Apps <- list.files(StorageFolder, pattern="Application", full.names=TRUE)
 Apps <- read.csv(Apps[1], check.names=FALSE)
@@ -86,27 +76,6 @@ if (!length(GainMatches) == 0){
   GainMatches <- NULL
   }
   
-if (!length(PotentialMFIDays) == 0){
-# MFI Starting Locations
-
-FCSFolder <- file.path("/Users/r.turner/Documents/Positron_Local/InstrumentQC/data/5L")
-MonthStyle <- format(Today, "%Y-%m")
-MonthFolder <- paste0("QC_", MonthStyle)
-MonthFolder <- file.path(FCSFolder, MonthFolder)
-TheFCSFiles <- list.files(MonthFolder, pattern="fcs", full.names=TRUE, recursive=TRUE)
-
-days <- format(PotentialMFIDays, "%d")
-
-MFIMatches <- TheFCSFiles[str_detect(basename(TheFCSFiles), str_c(days, collapse = "|"))]
-
-if (!length(MFIMatches) == 0){
-file.copy(MFIMatches, WorkingFolder)
-walk(.x=Instrument, .f=Luciernaga:::QCBeadParse, MainFolder=MainFolder)
-}
-} else {message("QC data has already been transferred")
-  MFIMatches <- NULL
-  }
-
 if (!length(PotentialAppsDays) == 0){
     SetupFolder <- file.path("/Users/r.turner/Documents/Positron_Local/InstrumentQC/data/5L")
     TheSetupFiles <- list.files(SetupFolder, pattern="Application", full.names=TRUE)
@@ -118,7 +87,7 @@ if (!length(PotentialAppsDays) == 0){
     AppMatches <- TheSetupFiles[str_detect(TheSetupFiles, str_c(MonthStyle, collapse = "|"))]
     
     if (!length(AppMatches) == 0){
-      if (any(length(GainMatches)|length(MFIMatches) > 0)){
+      if (length(GainMatches) > 0){
       file.copy(AppMatches, WorkingFolder)
       walk(.x=Instrument, .f=Luciernaga:::AppQCParse, MainFolder=MainFolder)
       }
@@ -127,9 +96,9 @@ if (!length(PotentialAppsDays) == 0){
     AppMatches <- NULL
     }
 
-if (any(length(PotentialGainDays)|length(PotentialMFIDays)|length(PotentialAppsDays) > 0)){
-  
-  if (any(length(GainMatches)|length(MFIMatches) > 0)){
+if (any(length(PotentialGainDays)|length(PotentialAppsDays) > 0)){
+
+  if (length(GainMatches) > 0){
     # Stage to Git
     git2r::add(TheRepo, "*")
     

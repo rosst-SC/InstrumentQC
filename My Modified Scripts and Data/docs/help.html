@@ -147,7 +147,6 @@ ul.task-list li input[type="checkbox"] {
   <ul>
   <li><a href="#measurement-types" id="toc-measurement-types" class="nav-link active" data-scroll-target="#measurement-types">Measurement Types</a>
   <ul class="collapse">
-  <li><a href="#mfi" id="toc-mfi" class="nav-link" data-scroll-target="#mfi">MFI</a></li>
   <li><a href="#gain" id="toc-gain" class="nav-link" data-scroll-target="#gain">Gain</a></li>
   <li><a href="#rcv" id="toc-rcv" class="nav-link" data-scroll-target="#rcv">%rCV</a></li>
   </ul></li>
@@ -164,25 +163,9 @@ ul.task-list li input[type="checkbox"] {
 
 <section id="measurement-types" class="level1">
 <h1>Measurement Types</h1>
-<section id="mfi" class="level2">
-<h2 class="anchored" data-anchor-id="mfi">MFI</h2>
-<p>During Daily QC, the spectral cytometers use QC beads to adjust the gains for individual detectors to ensure that .fcs files acquired on different days are comparable across time. To monitor these adjustments, we visualize the Median Fluorescent Intensity (MFI) values of the QC bead .fcs files that are acquired before and after running daily QC. What we normally observe resembles the following plot:</p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><img src="images/MFI_B3.png" class="img-fluid quarto-figure quarto-figure-center figure-img"></p>
-</figure>
-</div>
-<p>In this plot, you can notice when the instrument switched from using the Cytek QC Bead Lot 2005 to Cytek QC Bead Lot 2006. This new QC bead lot has a new setpoint MFI for each detector that the instrument accounts for. (For additional examples see the <a href="https://umgccfcss.github.io/InstrumentQC/CytekQCBead">visualized differences</a> across lots.)</p>
-<p>On some of our instruments and detectors, we have observed there is significant drift from the setpoint of samples acquired before Daily QC has been run, which is why we encourage weekend users to run Daily QC when starting up the instrument.</p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><img src="images/MFI_R1.png" class="img-fluid quarto-figure quarto-figure-center figure-img"></p>
-</figure>
-</div>
-</section>
 <section id="gain" class="level2">
 <h2 class="anchored" data-anchor-id="gain">Gain</h2>
-<p>Gain (similar to voltage on certain cytometers) is an unit which detected signal is amplified by for each detector. An instrument applies different gains to each detector, allowing for use of dim and bright fluorophores. During the Daily QC, these gains normally get minor adjustments to ensure the MFI of the QC beads stays constant, allowing for comparison of .fcs files acquired on different days. As the individual lasers in the cytometer are used, they slowly wear down and more gain is applied to remain at that MFI setpoint. This contributes to the slowly increasing view typical of the gain plots:</p>
+<p>Gain (similar to voltage on certain cytometers) is an unit which detected signal is amplified by for each detector. An instrument applies different gains to each detector, allowing for use of dim and bright fluorophores. During the Daily QC, these gains normally get minor adjustments to keep the QC beads’ signal constant, allowing for comparison of .fcs files acquired on different days. As the individual lasers in the cytometer are used, they slowly wear down and more gain is applied to remain at that setpoint. This contributes to the slowly increasing view typical of the gain plots:</p>
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
 <p><img src="images/Gain_UV3.png" class="img-fluid quarto-figure quarto-figure-center figure-img"></p>
@@ -249,7 +232,7 @@ ul.task-list li input[type="checkbox"] {
 </section>
 <section id="interactive-levey-jennings-plots" class="level1">
 <h1>Interactive Levey-Jennings Plots</h1>
-<p>For each spectral instruments, the interactive plots are laid out in three columns (MFI, Gain, %rCV), with tabs for each of the lasers on that instrument. Additional parameters (Scatter, LaserPower, LaserDelay, LaserAreaScaling) may appear if they are recorded by that instrument.</p>
+<p>For each spectral instruments, the interactive plots are laid out in two columns (Gain, %rCV), with tabs for each of the lasers on that instrument. Additional parameters (Scatter, LaserPower, LaserDelay, LaserAreaScaling) may appear if they are recorded by that instrument.</p>
 <p>When a QC fail occurs for a given parameter, it appears as a red box on that individual date.</p>
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
@@ -272,9 +255,8 @@ ul.task-list li input[type="checkbox"] {
 </figure>
 </div>
 <p>Gain and %rCV links to .csv file containing those types of data.</p>
-<p>MFI links to .csv file containing the data derrived from the before and after QC Bead .fcs files.</p>
-<p>Both the above can be used if you want to <a href="https://davidrach.github.io/Luciernaga/articles/QualityControl.html#qc_plots">plot the data</a> yourself using a different ggplot2 color-scheme in R than the one we have selected. Additionally, data for timepoints older than the current year can be found here.</p>
-<p>Plots is a .pdf containing static versions of all the interactive plots (MFI, Gain, %rCV) that are visible for the Levey-Jennings Plots for the individual instrument. QC fails appear as red squares, and vertical red dashed lines correspond to dates the field service engineer was on site for repairs or preventative maintenance.</p>
+<p>This can be used if you want to <a href="https://davidrach.github.io/Luciernaga/articles/QualityControl.html#qc_plots">plot the data</a> yourself using a different ggplot2 color-scheme in R than the one we have selected. Additionally, data for timepoints older than the current year can be found here.</p>
+<p>Plots is a .pdf containing static versions of all the interactive plots (Gain, %rCV) that are visible for the Levey-Jennings Plots for the individual instrument. QC fails appear as red squares, and vertical red dashed lines correspond to dates the field service engineer was on site for repairs or preventative maintenance.</p>
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
 <p><img src="images/RCV_V3.png" class="img-fluid quarto-figure quarto-figure-center figure-img"></p>

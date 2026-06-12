@@ -4,19 +4,8 @@ toc: true
 
 # Measurement Types
 
-## MFI
- During Daily QC, the spectral cytometers use QC beads to adjust the gains for individual detectors to ensure that .fcs files acquired on different days are comparable  across time. To monitor these adjustments, we visualize the Median Fluorescent Intensity (MFI) values of the QC bead .fcs files that are acquired before and after running daily QC. What we normally observe resembles the following plot:
-
- ![](images/MFI_B3.png){fig-align="center"}
-
- In this plot, you can notice when the instrument switched from using the Cytek QC Bead Lot 2005 to Cytek QC Bead Lot 2006. This new QC bead lot has a new setpoint MFI for each detector that the instrument accounts for. (For additional examples see the [visualized differences](https://umgccfcss.github.io/InstrumentQC/CytekQCBead) across lots.)
-
- On some of our instruments and detectors, we have observed there is significant drift from the setpoint of samples acquired before Daily QC has been run, which is why we encourage weekend users to run Daily QC when starting up the instrument.
-
- ![](images/MFI_R1.png){fig-align="center"}
- 
 ## Gain
-Gain (similar to voltage on certain cytometers) is an unit which detected signal is amplified by for each detector. An instrument applies different gains to each detector, allowing for use of dim and bright fluorophores. During the Daily QC, these gains normally get minor adjustments to ensure the MFI of the QC beads stays constant, allowing for comparison of .fcs files acquired on different days.  As the individual lasers in the cytometer are used, they slowly wear down and more gain is applied to remain at that MFI setpoint. This contributes to the slowly increasing view typical of the gain plots:
+Gain (similar to voltage on certain cytometers) is an unit which detected signal is amplified by for each detector. An instrument applies different gains to each detector, allowing for use of dim and bright fluorophores. During the Daily QC, these gains normally get minor adjustments to keep the QC beads' signal constant, allowing for comparison of .fcs files acquired on different days.  As the individual lasers in the cytometer are used, they slowly wear down and more gain is applied to remain at that setpoint. This contributes to the slowly increasing view typical of the gain plots:
 
  ![](images/Gain_UV3.png){fig-align="center"}
 
@@ -59,7 +48,7 @@ By contrast, is the RCV went from consistently stable, to spiking, the impact on
 
 # Interactive Levey-Jennings Plots
 
-For each spectral instruments, the interactive plots are laid out in three columns (MFI, Gain, %rCV), with tabs for each of the lasers on that instrument. Additional parameters (Scatter, LaserPower, LaserDelay, LaserAreaScaling) may appear if they are recorded by that instrument.  
+For each spectral instruments, the interactive plots are laid out in two columns (Gain, %rCV), with tabs for each of the lasers on that instrument. Additional parameters (Scatter, LaserPower, LaserDelay, LaserAreaScaling) may appear if they are recorded by that instrument.  
 
 When a QC fail occurs for a given parameter, it appears as a red box on that individual date.
 
@@ -75,12 +64,10 @@ All data that was derived for use in the interactive dashboards for the individu
 
  ![](images/DataView.png){fig-align="center"} 
 
-Gain and %rCV links to .csv file containing those types of data. 
+Gain and %rCV links to .csv file containing those types of data.
 
-MFI links to .csv file containing the data derrived from the before and after QC Bead .fcs files. 
+This can be used if you want to [plot the data](https://davidrach.github.io/Luciernaga/articles/QualityControl.html#qc_plots) yourself using a different ggplot2 color-scheme in R than the one we have selected. Additionally, data for timepoints older than the current year can be found here.
 
-Both the above can be used if you want to [plot the data](https://davidrach.github.io/Luciernaga/articles/QualityControl.html#qc_plots) yourself using a different ggplot2 color-scheme in R than the one we have selected. Additionally, data for timepoints older than the current year can be found here. 
-
-Plots is a .pdf containing static versions of all the interactive plots (MFI, Gain, %rCV) that are visible for the Levey-Jennings Plots for the individual instrument. QC fails appear as red squares, and vertical red dashed lines correspond to dates the field service engineer was on site for repairs or preventative maintenance.
+Plots is a .pdf containing static versions of all the interactive plots (Gain, %rCV) that are visible for the Levey-Jennings Plots for the individual instrument. QC fails appear as red squares, and vertical red dashed lines correspond to dates the field service engineer was on site for repairs or preventative maintenance.
 
  ![](images/RCV_V3.png){fig-align="center"} 

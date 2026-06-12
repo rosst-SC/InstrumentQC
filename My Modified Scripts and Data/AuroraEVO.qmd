@@ -17,15 +17,11 @@ Computer <- getwd()
 MainFolder <- file.path(Computer, "data")
 
 # The Aurora EVO runs SpectroFlo 4.x. Its Gain/rCV Archive (ArchivedDataEVO.csv)
-# is produced from the DailyQC reports by the 4.x parser; the MFI/Bead Archive
-# (BeadDataEVO.csv) requires Before/After QC bead .fcs files and may not be
-# present yet. The page shows whatever exists: Gain + rCV whenever the gain
-# archive is present, and the MFI column once bead data lands.
+# is produced from the DailyQC reports by the 4.x parser. The page renders once
+# that archive is present, and shows an "awaiting data" placeholder until then.
 ArchiveDir <- file.path(MainFolder, "EVO", "Archive")
 GainFile <- list.files(ArchiveDir, pattern = "Archived", full.names = TRUE)
-MFIFile  <- list.files(ArchiveDir, pattern = "Bead",     full.names = TRUE)
 HasGain <- length(GainFile) == 1 && nrow(read.csv(GainFile[1], nrow = 1)) > 0
-HasMFI  <- length(MFIFile)  == 1 && nrow(read.csv(MFIFile[1],  nrow = 1)) > 0
 HasData <- HasGain
 ```
 
@@ -155,55 +151,13 @@ ScatterPlotsRCV <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=ScatterGains,
                      RepairVisits=RepairEVO)
 ```
 
-```{r}
-#| eval: !expr HasMFI
-# MFI / bead column — only built once BeadDataEVO.csv (Before/After QC beads) exists.
-MFI_EVO <- Luciernaga:::CurrentData(x="EVO", MainFolder=MainFolder, type = "MFI")
-MFI_EVO <- MFI_EVO %>% filter(DateTime >= WindowOfInterest)
-
-xm <- MFI_EVO %>% dplyr::filter(Timepoint %in% c("Before", "After"))
-TheColumns <- xm %>% select(where(~is.numeric(.)||is.integer(.))) %>% colnames()
-TheColumns <- setdiff(TheColumns, "TIME")
-TheIntermediate <- TheColumns[!str_detect(TheColumns, "Gain")]
-TheIntermediate <- TheIntermediate[!str_detect(TheIntermediate, "rCV")]
-TheColumnNames <- TheIntermediate[str_detect(TheIntermediate, "-A")]
-
-UltraVioletGains <- TheColumnNames[str_detect(TheColumnNames, "^UV")]
-VioletGains <- TheColumnNames[str_detect(TheColumnNames, "^V")]
-BlueGains <- TheColumnNames[str_detect(TheColumnNames, "^B")]
-YellowGreenGains <- TheColumnNames[str_detect(TheColumnNames, "^YG")]
-RedGains <- TheColumnNames[str_detect(TheColumnNames, "^R")]
-ScatterGains <- TheIntermediate[str_detect(TheIntermediate, "SC-")]
-ScatterGains <- Luciernaga:::ScalePriority(ScatterGains)
-
-UltraVioletPlotsMFI <- QC_Plots(x=xm, FailedFlag=TRUE, MeasurementType=UltraVioletGains,
-                      plotType = "comparison", returntype = "plots",
-                      Metadata="Timepoint", strict = TRUE, YAxisLabel = "MFI", RepairVisits=RepairEVO)
-VioletPlotsMFI <- QC_Plots(x=xm, FailedFlag=TRUE, MeasurementType=VioletGains,
-                      plotType = "comparison", returntype = "plots",
-                      Metadata="Timepoint", strict = TRUE, YAxisLabel = "MFI", RepairVisits=RepairEVO)
-BluePlotsMFI <- QC_Plots(x=xm, FailedFlag=TRUE, MeasurementType=BlueGains,
-                      plotType = "comparison", returntype = "plots",
-                      Metadata="Timepoint", strict = TRUE, YAxisLabel = "MFI", RepairVisits=RepairEVO)
-YellowGreenPlotsMFI <- QC_Plots(x=xm, FailedFlag=TRUE, MeasurementType=YellowGreenGains,
-                      plotType = "comparison", returntype = "plots",
-                      Metadata="Timepoint", strict = TRUE, YAxisLabel = "MFI", RepairVisits=RepairEVO)
-RedPlotsMFI <- QC_Plots(x=xm, FailedFlag=TRUE, MeasurementType=RedGains,
-                      plotType = "comparison", returntype = "plots",
-                      Metadata="Timepoint", strict = TRUE, YAxisLabel = "MFI", RepairVisits=RepairEVO)
-ScatterPlotsMFI <- QC_Plots(x=xm, FailedFlag=TRUE, MeasurementType=ScatterGains,
-                      plotType = "comparison", returntype = "plots",
-                      Metadata="Timepoint", strict = TRUE, YAxisLabel = " ", RepairVisits=RepairEVO)
-```
-
 ## {.sidebar}
 Dashboard data for the **Cytek Aurora EVO** last updated on **`r TheDate`**
 
-**Note:** The EVO runs SpectroFlo 4.x. Gain and %rCV are shown from the daily QC reports. The MFI column appears once before/after QC bead data is available.
+**Note:** The EVO runs SpectroFlo 4.x. Gain and %rCV are shown from the daily QC reports.
 
-**First Column: MFI** Median Fluorescent Intensity (MFI) values for QC beads acquired Before and After QC. Measures stability over time.
-**Second Column: Gain** Gain (Voltage) values set for instrument after QC. Changes over time reflective of laser health.
-**Third Column: rCV** Percentage Robust Coefficient of Variation (rCV) after QC. Higher values reflect decreased resolution between positive and negative for that detector.
+**First Column: Gain** Gain (Voltage) values set for instrument after QC. Changes over time reflective of laser health.
+**Second Column: rCV** Percentage Robust Coefficient of Variation (rCV) after QC. Higher values reflect decreased resolution between positive and negative for that detector.
 
 For additional information concerning individual parameter tabs, navigate to the [Help](help.qmd) page.
 
@@ -212,50 +166,6 @@ For additional information concerning individual parameter tabs, navigate to the
 This dashboard contains the visualized QC data for the Cytek Aurora cytometers, adapted from the [UMGCC FCSS InstrumentQC](https://umgccfcss.github.io/InstrumentQC/) project.
 
 This dashboard was created with [Quarto](https://quarto.org/), based on work by [David Rach](https://github.com/DavidRach).
-
-## MFI {.tabset}
-
-```{r}
-#| eval: !expr '!HasMFI'
-#| title: MFI
-htmltools::HTML("<p><em>Awaiting before/after QC bead <code>.fcs</code> files. Once <code>BeadDataEVO.csv</code> is present in <code>data/EVO/Archive/</code>, the MFI tabs (per laser) appear here automatically.</em></p>")
-```
-
-```{r}
-#| eval: !expr HasMFI
-#| title: UltraViolet
-htmltools::tagList(lapply(UltraVioletPlotsMFI, ggplotly))
-```
-
-```{r}
-#| eval: !expr HasMFI
-#| title: Violet
-htmltools::tagList(lapply(VioletPlotsMFI, ggplotly))
-```
-
-```{r}
-#| eval: !expr HasMFI
-#| title: Blue
-htmltools::tagList(lapply(BluePlotsMFI, ggplotly))
-```
-
-```{r}
-#| eval: !expr HasMFI
-#| title: YellowGreen
-htmltools::tagList(lapply(YellowGreenPlotsMFI, ggplotly))
-```
-
-```{r}
-#| eval: !expr HasMFI
-#| title: Red
-htmltools::tagList(lapply(RedPlotsMFI, ggplotly))
-```
-
-```{r}
-#| eval: !expr HasMFI
-#| title: Scatter
-htmltools::tagList(lapply(ScatterPlotsMFI, ggplotly))
-```
 
 ## Gain {.tabset}
 

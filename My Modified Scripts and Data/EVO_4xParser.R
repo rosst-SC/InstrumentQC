@@ -12,9 +12,6 @@
 # files are in data/EVO/, and replaces (not duplicates) EVO rows in
 # HistoricalData.csv. A backup of HistoricalData.csv is written alongside it.
 #
-# NOTE: the MFI/Bead column (BeadDataEVO.csv) is produced separately by
-# QCBeadParse from Before/After QC bead .fcs files and is not handled here.
-#
 # Usage:  Rscript "EVO_4xParser.R"   (run from this folder)
 # =============================================================================
 
