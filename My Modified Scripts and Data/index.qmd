@@ -138,7 +138,7 @@ For additional information, navigate to the [Help](help.qmd) page.
 
 **About**
 
-This dashboard contains the visualized QC data for the Cytek cytometers at the Sydney Cytometry Core Facility, University of Sydney
+This dashboard contains the visualized QC data for the Cytek cytometers at the Sydney Cytometry Core Facility
 
 For additional flow cytometry resources, visit our [website](https://sydneycytometry.org.au/)
 
