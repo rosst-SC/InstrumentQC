@@ -1,0 +1,135 @@
+---
+format:
+  dashboard:
+    orientation: rows
+    scrolling: true
+---
+
+```{r}
+#| message: false
+#| warning: false
+
+library(stringr)
+library(purrr)
+library(dplyr)
+library(ggplot2)
+library(ggbeeswarm)
+```
+
+```{r}
+# Auto-discover every QCBeadLot*.csv in the project folder, so new lots are
+# picked up automatically just by dropping the file in (no code edits needed).
+# The lot CSVs are inconsistent (some have a UTF-8 BOM, the 2xxx lots misspell
+# "SensitivitySepc", the old 1xxx lots have leading spaces in their headers and
+# predate the CytekAssaySetting metric, and column sets vary), so each file is
+# normalised before combining with bind_rows() (which tolerates differing cols).
+LotFiles <- sort(list.files("data/reference", pattern = "^QCBeadLot[0-9]+[.]csv$", full.names = TRUE))
+
+ReadLot <- function(f) {
+  d <- read.csv(f, check.names = FALSE, fileEncoding = "UTF-8-BOM")   # strip any BOM
+  names(d) <- trimws(names(d))                                        # old lots have padded headers
+  if ("SensitivitySepc" %in% names(d)) {
+    d <- rename(d, SensitivitySpec = SensitivitySepc)                 # normalise the misspelling
+  }
+  d <- mutate(d, across(where(is.character), trimws))                 # trim padded values (old lots)
+  d$Lot <- as.integer(str_extract(basename(f), "[0-9]+"))
+  if (!"CytekAssaySetting" %in% names(d)) d$CytekAssaySetting <- 0    # old lots predate this metric
+  d
+}
+
+Data <- map(LotFiles, ReadLot) |> bind_rows() |> relocate(Lot, .before = 1)
+```
+
+```{r}
+UV <- Data %>% filter(Laser %in% "UV")
+UV <- UV %>% filter(!Filter %in% c("355/10", "355/15"))
+UV <- UV %>% group_by(Lot, Laser) %>% mutate(DetectorNumber=row_number()) %>% ungroup()
+
+V <- Data %>% filter(Laser %in% "Violet")
+V <- V %>% filter(!Filter %in% c("405/10", "405/15"))
+V <- V %>% group_by(Lot, Laser) %>% mutate(DetectorNumber=row_number()) %>% ungroup()
+
+B <- Data %>% filter(Laser %in% "Blue")
+B <- B %>% filter(!Filter %in% c("488/10", "488/15", "843/30", "843/30", "871/25", "857/30", "875/50"))
+B <- B %>% group_by(Lot, Laser) %>% mutate(DetectorNumber=row_number()) %>% ungroup()
+
+YG <- Data %>% filter(Laser %in% "YellowGreen")
+YG <- YG %>% filter(!Filter %in% c("561/10", "561/15"))
+YG <- YG %>% group_by(Lot, Laser) %>% mutate(DetectorNumber=row_number()) %>% ungroup()
+
+R <- Data %>% filter(Laser %in% "Red")
+R <- R %>% filter(!Filter %in% c("660/15", "843/30", "871/25", "857/30", "875/50"))
+R <- R %>% group_by(Lot, Laser) %>% mutate(DetectorNumber=row_number()) %>% ungroup()
+
+Data <- rbind(UV, V, B, YG, R)
+
+Data <- Data %>%
+  mutate(Laser1 = case_when(
+    Laser == "Blue" ~ "B",
+    Laser == "YellowGreen" ~ "YG",
+    Laser == "Red" ~ "R",
+    Laser == "UV" ~ "UV",
+    Laser == "Violet" ~ "V",
+    TRUE ~ Laser
+  ))
+
+Data <- Data %>% mutate(Detector=paste0(Laser1, DetectorNumber)) %>% relocate(Detector, .before=RAB) %>% select(-Laser1)
+```
+
+```{r}
+DataOrder <- Data %>% filter(Lot %in% "2005") %>% pull(Detector)
+
+Data$Lot <- as.character(Data$Lot)
+
+Data <- Data %>% mutate(Detector = factor(Detector, levels = DataOrder))
+```
+
+```{r}
+MFI <- ggplot(Data, aes(x = Detector, y = MFITarget, fill = Laser, shape = Lot)) +
+  geom_beeswarm(size = 3, dodge.width = 0.1) +
+  scale_fill_manual(values = c("UV" = "#7F00FF", "Violet" = "#FFC0CB", "Blue" = "#0000FF",
+                               "YellowGreen" = "#9ACD32", "Red" = "#FF0000")) +
+  scale_shape_manual(values = rep(22, length(unique(Data$Lot)))) +
+  theme_minimal() +
+  labs(x = "Detector", y = "MFI", title = "") + theme_bw() +
+  theme(legend.position = "right", axis.text.x = element_text(angle = 60, hjust = 1, vjust = 1, size=7))
+```
+
+```{r}
+RAB <- ggplot(Data, aes(x = Detector, y = RAB, fill = Laser, shape = Lot)) +
+  geom_beeswarm(size = 3, dodge.width = 0.1) +
+  scale_fill_manual(values = c("UV" = "#7F00FF", "Violet" = "#FFC0CB", "Blue" = "#0000FF",
+                               "YellowGreen" = "#9ACD32", "Red" = "#FF0000")) +
+  scale_shape_manual(values = rep(22, length(unique(Data$Lot)))) +
+  theme_minimal() + labs(x = "Detector", y = "RAB", title = "") + theme_bw() +
+  theme(legend.position = "right",
+        axis.text.x = element_text(angle = 60, hjust = 1, vjust = 1, size=7))
+```
+
+```{r}
+CytekAssaySetting <- ggplot(Data, aes(x = Detector, y = CytekAssaySetting, fill = Laser, shape = Lot)) +
+  geom_beeswarm(size = 3, dodge.width = 0.1) +
+  scale_fill_manual(values = c("UV" = "#7F00FF", "Violet" = "#FFC0CB", "Blue" = "#0000FF",
+                               "YellowGreen" = "#9ACD32", "Red" = "#FF0000")) +
+  scale_shape_manual(values = rep(22, length(unique(Data$Lot)))) +
+  labs(x = "Detector", y = "Cytek Assay Setting", title = "") + theme_bw() +
+  theme(legend.position = "right", axis.text.x = element_text(angle = 60, hjust = 1, vjust = 1, size=7))
+```
+
+## MFI
+
+```{r}
+plotly::ggplotly(MFI)
+```
+
+## RAB
+
+```{r}
+plotly::ggplotly(RAB)
+```
+
+## Cytek Assay Settings
+
+```{r}
+plotly::ggplotly(CytekAssaySetting)
+```
