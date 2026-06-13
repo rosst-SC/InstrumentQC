@@ -26,3 +26,7 @@ TheScript.R
 # data/*/Archive/*.csv, then deleted by TheScript_*.R)
 *.fcs
 DailyQCReport_*.CSV
+
+# 8-peak sub-project has its own git repo; site only needs the rendered
+# docs/ page + diagnostic images under images/8peak_evo/.
+8peak_tracking_spectral/

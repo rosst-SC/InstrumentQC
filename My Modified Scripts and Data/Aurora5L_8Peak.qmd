@@ -1,0 +1,10 @@
+---
+title: "Cytek Aurora 5L · 8 Peak Beads"
+---
+
+::: {.callout-note appearance="simple"}
+## Coming soon
+8 peak bead analysis for the **Cytek Aurora 5L** will appear here.
+
+Replace the contents of this file (`Aurora5L_8Peak.qmd`) with your analysis.
+:::
