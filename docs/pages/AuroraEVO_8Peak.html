@@ -6,7 +6,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="dcterms.date" content="2026-06-13">
+<meta name="dcterms.date" content="2026-06-15">
 
 <title>8 Peak Bead Tracking — Aurora EVO (5L) – Instrument QC</title>
 <style>
@@ -263,7 +263,7 @@ window.Quarto = {
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">June 13, 2026</p>
+      <p class="date">June 15, 2026</p>
     </div>
   </div>
   
@@ -383,7 +383,7 @@ Note
 <span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">cat</span>(<span class="st">"::: {layout-ncol=3}</span><span class="sc">\n</span><span class="st">"</span>)</span>
 <span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> (f <span class="cf">in</span> gate_imgs) {</span>
 <span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    d <span class="ot">&lt;-</span> <span class="fu">sub</span>(<span class="st">"^gate_(.*)[.]png$"</span>, <span class="st">"</span><span class="sc">\\</span><span class="st">1"</span>, <span class="fu">basename</span>(f))</span>
-<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    <span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">"![Run %s](%s)</span><span class="sc">\n\n</span><span class="st">"</span>, d, f))</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    <span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">"![Run %s](../%s)</span><span class="sc">\n\n</span><span class="st">"</span>, d, f))   <span class="co"># ../ : path is relative to the page in pages/</span></span>
 <span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>  }</span>
 <span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">cat</span>(<span class="st">":::</span><span class="sc">\n</span><span class="st">"</span>)</span>
 <span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -393,7 +393,7 @@ Note
 <div class="quarto-layout-cell" style="flex-basis: 33.3%;justify-content: flex-start;">
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
-<p><img src="images/8peak_evo/gate_2026-05-20.png" class="img-fluid figure-img"></p>
+<p><img src="../images/8peak_evo/gate_2026-05-20.png" class="img-fluid figure-img"></p>
 <figcaption>Run 2026-05-20</figcaption>
 </figure>
 </div>
@@ -401,7 +401,7 @@ Note
 <div class="quarto-layout-cell" style="flex-basis: 33.3%;justify-content: flex-start;">
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
-<p><img src="images/8peak_evo/gate_2026-05-27.png" class="img-fluid figure-img"></p>
+<p><img src="../images/8peak_evo/gate_2026-05-27.png" class="img-fluid figure-img"></p>
 <figcaption>Run 2026-05-27</figcaption>
 </figure>
 </div>
@@ -409,7 +409,7 @@ Note
 <div class="quarto-layout-cell" style="flex-basis: 33.3%;justify-content: flex-start;">
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
-<p><img src="images/8peak_evo/gate_2026-05-29.png" class="img-fluid figure-img"></p>
+<p><img src="../images/8peak_evo/gate_2026-05-29.png" class="img-fluid figure-img"></p>
 <figcaption>Run 2026-05-29</figcaption>
 </figure>
 </div>
@@ -428,7 +428,7 @@ Note
 <span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">cat</span>(<span class="st">"::: {layout-ncol=3}</span><span class="sc">\n</span><span class="st">"</span>)</span>
 <span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> (f <span class="cf">in</span> clus_imgs) {</span>
 <span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    d <span class="ot">&lt;-</span> <span class="fu">sub</span>(<span class="st">"^cluster2d_(.*)[.]png$"</span>, <span class="st">"</span><span class="sc">\\</span><span class="st">1"</span>, <span class="fu">basename</span>(f))</span>
-<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    <span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">"![Run %s](%s)</span><span class="sc">\n\n</span><span class="st">"</span>, d, f))</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    <span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">"![Run %s](../%s)</span><span class="sc">\n\n</span><span class="st">"</span>, d, f))   <span class="co"># ../ : path is relative to the page in pages/</span></span>
 <span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>  }</span>
 <span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">cat</span>(<span class="st">":::</span><span class="sc">\n</span><span class="st">"</span>)</span>
 <span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -438,7 +438,7 @@ Note
 <div class="quarto-layout-cell" style="flex-basis: 33.3%;justify-content: flex-start;">
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
-<p><img src="images/8peak_evo/cluster2d_2026-05-20.png" class="img-fluid figure-img"></p>
+<p><img src="../images/8peak_evo/cluster2d_2026-05-20.png" class="img-fluid figure-img"></p>
 <figcaption>Run 2026-05-20</figcaption>
 </figure>
 </div>
@@ -446,7 +446,7 @@ Note
 <div class="quarto-layout-cell" style="flex-basis: 33.3%;justify-content: flex-start;">
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
-<p><img src="images/8peak_evo/cluster2d_2026-05-27.png" class="img-fluid figure-img"></p>
+<p><img src="../images/8peak_evo/cluster2d_2026-05-27.png" class="img-fluid figure-img"></p>
 <figcaption>Run 2026-05-27</figcaption>
 </figure>
 </div>
@@ -454,7 +454,7 @@ Note
 <div class="quarto-layout-cell" style="flex-basis: 33.3%;justify-content: flex-start;">
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
-<p><img src="images/8peak_evo/cluster2d_2026-05-29.png" class="img-fluid figure-img"></p>
+<p><img src="../images/8peak_evo/cluster2d_2026-05-29.png" class="img-fluid figure-img"></p>
 <figcaption>Run 2026-05-29</figcaption>
 </figure>
 </div>

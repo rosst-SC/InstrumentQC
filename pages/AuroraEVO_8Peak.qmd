@@ -101,7 +101,7 @@ if (length(gate_imgs) == 0) {
   cat("::: {layout-ncol=3}\n")
   for (f in gate_imgs) {
     d <- sub("^gate_(.*)[.]png$", "\\1", basename(f))
-    cat(sprintf("![Run %s](%s)\n\n", d, f))
+    cat(sprintf("![Run %s](../%s)\n\n", d, f))   # ../ : path is relative to the page in pages/
   }
   cat(":::\n")
 }
@@ -119,7 +119,7 @@ if (length(clus_imgs) == 0) {
   cat("::: {layout-ncol=3}\n")
   for (f in clus_imgs) {
     d <- sub("^cluster2d_(.*)[.]png$", "\\1", basename(f))
-    cat(sprintf("![Run %s](%s)\n\n", d, f))
+    cat(sprintf("![Run %s](../%s)\n\n", d, f))   # ../ : path is relative to the page in pages/
   }
   cat(":::\n")
 }
