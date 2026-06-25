@@ -66,6 +66,7 @@ robust_cv <- function(x) 100 * (IQR(x) / 1.349) / abs(median(x))
 
 assign_peaks <- function(ff, cfg) {
   te  <- asinh(exprs(ff)[, cfg$anchor_detectors, drop = FALSE] / cfg$cluster_cofactor)
+  set.seed(1)   # flowClust uses random EM starts; seed for reproducible peak labels/rCVs
   fit <- flowClust(flowFrame(te), varNames = cfg$anchor_detectors,
                    K = cfg$n_peaks, B = 500, trans = 0)
   lab <- flowClust::Map(fit, rm.outliers = FALSE)
