@@ -11,6 +11,7 @@ project:
     - pages/Aurora3L_8Peak.qmd
     - pages/Aurora5L_8Peak.qmd
     - pages/AuroraEVO_8Peak.qmd
+    - pages/AuroraEVO_6PeakUltra.qmd
     - pages/CytekQCBead.qmd
     - pages/help.qmd
 website:
@@ -43,6 +44,10 @@ website:
         href: pages/Aurora5L_8Peak.qmd
       - text: "Cytek Aurora EVO"
         href: pages/AuroraEVO_8Peak.qmd
+    - text: "6 Peak Ultra Beads"
+      menu:
+      - text: "Cytek Aurora EVO"
+        href: pages/AuroraEVO_6PeakUltra.qmd
     right:
     - text: "QC Bead Lots"
       href: pages/CytekQCBead.qmd

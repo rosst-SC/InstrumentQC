@@ -133,7 +133,7 @@ This dashboard contains the visualized QC data for the Cytek cytometers at the S
 
 For additional flow cytometry resources, visit our [website](https://sydneycytometry.org.au/)
 
-This dashboard was created with [Quarto](https://quarto.org/) and is maintained by [David Rach](https://github.com/DavidRach)
+This dashboard was created with [Quarto](https://quarto.org/), based on work by [David Rach](https://github.com/DavidRach).
 
 ## First {width="30%"}
 

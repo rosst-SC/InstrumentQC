@@ -30,3 +30,8 @@ DailyQCReport_*.CSV
 # 8-peak sub-project has its own git repo; site only needs the rendered
 # docs/ page + diagnostic images under images/8peak_evo/.
 8peak_tracking_spectral/
+
+# 6-peak-ultra sub-project (same pattern): site only needs the rendered page +
+# diagnostic images under images/6peak_ultra_evo/, not the subproject internals.
+6peak Ultra_tracking_spectral/
+*.csv.bak
