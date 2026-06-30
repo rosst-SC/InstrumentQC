@@ -10,11 +10,17 @@ library(dplyr)
 library(purrr)
 library(stringr)
 library(plotly)
+library(ggplot2)
 library(Luciernaga)
 
 Computer <- getwd()
 MainFolder <- file.path(Computer, "data")
 TheList <- c("3L")
+
+# Levey-Jennings control bands + drift-aware Westgard helpers (add_lj_bands,
+# lj_render, westgard_eval, add_westgard, lj_render_wg, westgard_summary),
+# shared with the EVO / 5L pages. See pages/_lj_helpers.R.
+source("pages/_lj_helpers.R")
 
 # Updating Data
 # Data processing (parsing new QC .fcs/.csv files into the Archive) is handled
@@ -123,6 +129,10 @@ Dashboard data for the **Cytek Aurora 3L** last updated on **`r TheDate`**
 **First Column: Gain** Gain (Voltage) values set for instrument after QC. Changes over time reflective of laser health.
 **Second Column: rCV** Percentage Robust Coefficient of Variation (rCV) after QC. Higher values reflect decreased resolution between positive and negative for that detector.
 
+**Control bands:** each plot shows the robust centerline (median) with green (within ±2 SD) and amber (±2–3 SD) zones and red dashed action limits (±3 SD), computed from each detector's own history (robust SD = MAD; QC-fail points excluded from the baseline).
+
+**Westgard flags (Gain only):** hollow circles mark rule violations — red = 1₃s (>3 SD) or 2₂s (2 consecutive >2 SD, a step); amber = 1₂s (>2 SD warning). These use a **rolling ~45-day local baseline** (with a practical-significance floor), so they flag breaks from how the instrument runs *now*, independent of long-term aging — different from the full-window bands. Hover a marker for the rule; see the **Violations** tab for the list. The drift-counting rules (10x, 4₁s) are intentionally omitted because gain legitimately drifts as detectors age.
+
 For additional information concerning individual parameter tabs, navigate to the [Help](help.qmd) page.
 
 **About**
@@ -137,62 +147,77 @@ This dashboard was created with [Quarto](https://quarto.org/), based on work by 
 
 ```{r}
 #| title: Violet
-htmltools::tagList(lapply(VioletPlotsGain, ggplotly))
+lj_render_wg(VioletPlotsGain)
 ```
 
 ```{r}
 #| title: Blue
-htmltools::tagList(lapply(BluePlotsGain, ggplotly))
+lj_render_wg(BluePlotsGain)
 ```
 
 ```{r}
 #| title: Red
-htmltools::tagList(lapply(RedPlotsGain, ggplotly))
+lj_render_wg(RedPlotsGain)
 ```
 
 ```{r}
 #| title: Scatter
-htmltools::tagList(lapply(ScatterPlotsGain, ggplotly))
+lj_render_wg(ScatterPlotsGain)
 ```
 
 ```{r}
 #| title: LaserDelay
-htmltools::tagList(lapply(LaserDelayPlotsGain, ggplotly))
+lj_render_wg(LaserDelayPlotsGain)
 ```
 
 ```{r}
 #| title: LaserScaling
-htmltools::tagList(lapply(ScalingPlotsGain, ggplotly))
+lj_render_wg(ScalingPlotsGain)
+```
+
+```{r}
+#| title: "Violations"
+WGtab <- westgard_summary(c(VioletPlotsGain, BluePlotsGain, RedPlotsGain,
+  ScatterPlotsGain, LaserDelayPlotsGain, ScalingPlotsGain))
+if (nrow(WGtab) == 0) {
+  cat("No Westgard violations in the current window.")
+} else {
+  knitr::kable(WGtab, row.names = FALSE,
+    caption = paste("Westgard violations on Gain (most recent first).",
+      "Rolling ~45-day local baseline; 1_3s = >3 SD (reject), 1_2s = >2 SD (warn),",
+      "2_2s = 2 consecutive >2 SD same side (reject).",
+      "Detectors with <8 recent points are unscored."))
+}
 ```
 
 ## rCV {.tabset}
 
 ```{r}
 #| title: Violet
-htmltools::tagList(lapply(VioletPlotsRCV, ggplotly))
+lj_render(VioletPlotsRCV, clamp0 = TRUE)
 ```
 
 ```{r}
 #| title: Blue
-htmltools::tagList(lapply(BluePlotsRCV, ggplotly))
+lj_render(BluePlotsRCV, clamp0 = TRUE)
 ```
 
 ```{r}
 #| title: Red
-htmltools::tagList(lapply(RedPlotsRCV, ggplotly))
+lj_render(RedPlotsRCV, clamp0 = TRUE)
 ```
 
 ```{r}
 #| title: Scatter
-htmltools::tagList(lapply(ScatterPlotsRCV, ggplotly))
+lj_render(ScatterPlotsRCV, clamp0 = TRUE)
 ```
 
 ```{r}
 #| title: LaserDelay
-htmltools::tagList(lapply(LaserDelayPlotsGain, ggplotly))
+lj_render(LaserDelayPlotsGain)
 ```
 
 ```{r}
 #| title: LaserScaling
-htmltools::tagList(lapply(ScalingPlotsGain, ggplotly))
+lj_render(ScalingPlotsGain)
 ```
