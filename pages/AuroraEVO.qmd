@@ -64,6 +64,100 @@ add_lj_bands <- function(p, k = c(2, 3), min_n = 8,
 lj_render <- function(plotlist, clamp0 = FALSE)
   htmltools::tagList(lapply(lapply(plotlist, add_lj_bands, clamp0 = clamp0), ggplotly))
 
+# ---- Westgard-style rule flagging (Gain only) --------------------------------
+# Reduced, drift-aware ruleset. EVO Gain is a CONTROLLED output (the daily-QC
+# routine sets the voltage to park the bead peak at target), so it drifts up as
+# detectors age -- that is correct, not a fault. So we DROP the drift-counting
+# rules (10x, 4_1s) and R_4s (needs two control levels; we have one/day), and keep
+# 1_3s (reject), 1_2s (warn) and 2_2s (sustained step). Each point is scored
+# against a ROLLING ~45-day baseline BEFORE it (not the full-window band stats):
+# z = (x - local median) / s_eff, where s_eff is floored at the detector's global
+# robust SD AND a practical-significance fraction of the level (rel_floor), so a
+# trivial gain nudge on a rock-stable detector isn't called "2 SD". Returns the
+# plot data with z / loc_center / wg_rules / wg_sev / wg_label, or NULL.
+westgard_eval <- function(p, trail_days = 45, min_n = 8, rel_floor = 0.025) {
+  ycol <- p$labels$title
+  d <- p$data
+  if (is.null(ycol) || !ycol %in% names(d) || !"DateTime" %in% names(d)) return(NULL)
+  d <- d[order(d$DateTime), , drop = FALSE]
+  x  <- suppressWarnings(as.numeric(d[[ycol]]))
+  dt <- as.POSIXct(d$DateTime)
+  fcol <- paste0("Flag-", ycol)
+  flagged <- if (fcol %in% names(d)) (suppressWarnings(as.logical(d[[fcol]])) %in% TRUE)
+             else rep(FALSE, nrow(d))
+  n <- nrow(d)
+  z <- rep(NA_real_, n); loc <- rep(NA_real_, n)
+  gmad <- stats::mad(x[!flagged & is.finite(x)], constant = 1.4826)   # characteristic noise
+  if (is.finite(gmad) && gmad > 0) {
+    win <- trail_days * 86400
+    for (i in seq_len(n)) {
+      if (!is.finite(x[i])) next
+      sel <- which(dt >= (dt[i] - win) & dt < dt[i] & !flagged & is.finite(x))
+      if (length(sel) < min_n) next
+      m <- stats::median(x[sel]); s <- stats::mad(x[sel], constant = 1.4826)
+      s_eff <- max(s, gmad, rel_floor * abs(m))
+      loc[i] <- m; z[i] <- (x[i] - m) / s_eff
+    }
+  }
+  rule <- rep(NA_character_, n); sev <- rep(NA_character_, n)
+  for (i in seq_len(n)) {
+    if (is.na(z[i])) next
+    rs <- character(0)
+    if (abs(z[i]) > 3) rs <- c(rs, "1_3s") else if (abs(z[i]) > 2) rs <- c(rs, "1_2s")
+    prev <- tail(which(!is.na(z[seq_len(i - 1)])), 1)                  # last scored point
+    if (length(prev) == 1 &&
+        ((z[i] > 2 && z[prev] > 2) || (z[i] < -2 && z[prev] < -2)))
+      rs <- c(rs, "2_2s")
+    if (length(rs) > 0) {
+      rule[i] <- paste(rs, collapse = "+")
+      sev[i]  <- if (any(rs %in% c("1_3s", "2_2s"))) "reject" else "warn"
+    }
+  }
+  d$z <- z; d$loc_center <- loc; d$wg_rules <- rule; d$wg_sev <- sev
+  d$wg_label <- ifelse(is.na(rule), NA_character_,
+    sprintf("%s | %s | %.1f | z=%.2f | %s", ycol,
+            format(as.Date(dt), "%Y-%m-%d"), x, z, rule))
+  d
+}
+
+# Overlay Westgard violation markers ON TOP of the LJ bands for one plot.
+add_westgard <- function(p, clamp0 = FALSE) {
+  p <- add_lj_bands(p, clamp0 = clamp0)
+  e <- westgard_eval(p)
+  if (is.null(e)) return(p)
+  v <- e[!is.na(e$wg_rules), , drop = FALSE]
+  if (nrow(v) == 0) return(p)
+  ycol <- p$labels$title
+  v$.sev <- factor(v$wg_sev, levels = c("warn", "reject"))
+  p + geom_point(data = v, inherit.aes = FALSE,
+        aes(x = DateTime, y = .data[[ycol]], color = .sev, text = wg_label),
+        shape = 1, stroke = 1.1, size = 4) +
+      scale_color_manual(values = c(warn = "#ff7f0e", reject = "#d62728"),
+                         drop = FALSE, guide = "none")
+}
+
+# Render Gain plot list with bands + Westgard markers (interactive).
+lj_render_wg <- function(plotlist)
+  htmltools::tagList(lapply(lapply(plotlist, add_westgard), ggplotly,
+                            tooltip = c("x", "y", "text")))
+
+# Collect violations across a set of detector plots into one recent-first table.
+westgard_summary <- function(plotlist) {
+  rows <- lapply(plotlist, function(p) {
+    e <- westgard_eval(p); if (is.null(e)) return(NULL)
+    v <- e[!is.na(e$wg_rules), , drop = FALSE]
+    if (nrow(v) == 0) return(NULL)
+    data.frame(Detector = p$labels$title, Date = as.Date(v$DateTime),
+               Rule = v$wg_rules, Value = round(suppressWarnings(as.numeric(v[[p$labels$title]])), 1),
+               z = round(v$z, 2), Severity = v$wg_sev, stringsAsFactors = FALSE)
+  })
+  out <- do.call(rbind, rows)
+  if (is.null(out)) return(data.frame(Detector = character(), Date = as.Date(character()),
+                                      Rule = character(), Value = numeric(),
+                                      z = numeric(), Severity = character()))
+  out[order(out$Date, decreasing = TRUE), , drop = FALSE]
+}
+
 # The Aurora EVO runs SpectroFlo 4.x. Its Gain/rCV Archive (ArchivedDataEVO.csv)
 # is produced from the DailyQC reports by the 4.x parser. The page renders once
 # that archive is present, and shows an "awaiting data" placeholder until then.
@@ -209,6 +303,8 @@ Dashboard data for the **Cytek Aurora EVO** last updated on **`r TheDate`**
 
 **Control bands:** each plot shows the robust centerline (median) with green (within ±2 SD) and amber (±2–3 SD) zones and red dashed action limits (±3 SD), computed from each detector's own history (robust SD = MAD; QC-fail points excluded from the baseline).
 
+**Westgard flags (Gain only):** hollow circles mark rule violations — red = 1₃s (>3 SD) or 2₂s (2 consecutive >2 SD, a step); amber = 1₂s (>2 SD warning). These use a **rolling ~45-day local baseline** (with a practical-significance floor), so they flag breaks from how the instrument runs *now*, independent of long-term aging — different from the full-window bands. Hover a marker for the rule; see the **Violations** tab for the list. The drift-counting rules (10x, 4₁s) are intentionally omitted because gain legitimately drifts as detectors age.
+
 For additional information concerning individual parameter tabs, navigate to the [Help](help.qmd) page.
 
 **About**
@@ -221,47 +317,63 @@ This dashboard was created with [Quarto](https://quarto.org/), based on work by 
 
 ```{r}
 #| title: UltraViolet
-lj_render(UltraVioletPlotsGain)
+lj_render_wg(UltraVioletPlotsGain)
 ```
 
 ```{r}
 #| title: Violet
-lj_render(VioletPlotsGain)
+lj_render_wg(VioletPlotsGain)
 ```
 
 ```{r}
 #| title: Blue
-lj_render(BluePlotsGain)
+lj_render_wg(BluePlotsGain)
 ```
 
 ```{r}
 #| title: YellowGreen
-lj_render(YellowGreenPlotsGain)
+lj_render_wg(YellowGreenPlotsGain)
 ```
 
 ```{r}
 #| title: Red
-lj_render(RedPlotsGain)
+lj_render_wg(RedPlotsGain)
 ```
 
 ```{r}
 #| title: Scatter
-lj_render(ScatterPlotsGain)
+lj_render_wg(ScatterPlotsGain)
 ```
 
 ```{r}
 #| title: LaserPower
-lj_render(LaserPowerPlotsGain)
+lj_render_wg(LaserPowerPlotsGain)
 ```
 
 ```{r}
 #| title: LaserDelay
-lj_render(LaserDelayPlotsGain)
+lj_render_wg(LaserDelayPlotsGain)
 ```
 
 ```{r}
 #| title: LaserScaling
-lj_render(ScalingPlotsGain)
+lj_render_wg(ScalingPlotsGain)
+```
+
+```{r}
+#| title: "Violations"
+WGtab <- westgard_summary(c(UltraVioletPlotsGain, VioletPlotsGain, BluePlotsGain,
+  YellowGreenPlotsGain, RedPlotsGain, ScatterPlotsGain, LaserPowerPlotsGain,
+  LaserDelayPlotsGain, ScalingPlotsGain))
+if (nrow(WGtab) == 0) {
+  cat("No Westgard violations in the current window.")
+} else {
+  knitr::kable(WGtab, row.names = FALSE,
+    caption = paste("Westgard violations on Gain (most recent first).",
+      "Rolling ~45-day local baseline; 1_3s = >3 SD (reject), 1_2s = >2 SD (warn),",
+      "2_2s = 2 consecutive >2 SD same side (reject).",
+      "Detectors with <8 recent points are unscored."))
+}
 ```
 
 ## rCV {.tabset}
