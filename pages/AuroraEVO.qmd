@@ -11,10 +11,58 @@ library(dplyr)
 library(purrr)
 library(stringr)
 library(plotly)
+library(ggplot2)
 library(Luciernaga)
 
 Computer <- getwd()
 MainFolder <- file.path(Computer, "data")
+
+# Levey-Jennings control bands. QC_Plots() returns a list of trend ggplots
+# (one per detector); this layers robust control limits *behind* the existing
+# trace, QC-fail squares and engineer-visit verticals. Center/spread are robust
+# (median +/- MAD-scaled SD); QC-fail points are excluded from the baseline but
+# still plot. Limits are recomputed from the visible history at render time.
+add_lj_bands <- function(p, k = c(2, 3), min_n = 8,
+                         exclude_flagged = TRUE, clamp0 = FALSE) {
+  ycol <- p$labels$title
+  d <- p$data
+  if (is.null(ycol) || !ycol %in% names(d) || !"DateTime" %in% names(d)) return(p)
+  vals <- suppressWarnings(as.numeric(d[[ycol]]))
+  keep <- is.finite(vals)
+  fcol <- paste0("Flag-", ycol)
+  if (exclude_flagged && fcol %in% names(d)) {
+    fl <- suppressWarnings(as.logical(d[[fcol]]))
+    keep <- keep & !(fl %in% TRUE)
+  }
+  base <- vals[keep]
+  if (length(base) < min_n) return(p)                       # preliminary: no bands
+  center <- stats::median(base, na.rm = TRUE)
+  s <- stats::mad(base, constant = 1.4826, na.rm = TRUE)
+  if (!is.finite(s) || s <= 0) return(p)                    # degenerate / flat
+  k <- sort(unique(k)); inner <- k[1]; outer <- k[length(k)]
+  xr <- range(d$DateTime, na.rm = TRUE)
+  lo <- function(m) { v <- center - m * s; if (clamp0) max(v, 0) else v }
+  hi <- function(m) center + m * s
+  rect <- function(ymin, ymax, fillcol)
+    geom_rect(data = data.frame(xmin = xr[1], xmax = xr[2], ymin = ymin, ymax = ymax),
+              inherit.aes = FALSE,
+              aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+              fill = fillcol, alpha = 0.12)
+  band_layers <- list(
+    rect(lo(inner), hi(inner), "#2ca02c"),   # in-control (green)
+    rect(lo(outer), lo(inner), "#ff7f0e"),   # warning below (amber)
+    rect(hi(inner), hi(outer), "#ff7f0e"),   # warning above (amber)
+    geom_hline(yintercept = center, color = "grey40", linewidth = 0.4),
+    geom_hline(yintercept = c(lo(outer), hi(outer)),
+               color = "#d62728", linetype = "dashed", linewidth = 0.3)
+  )
+  p$layers <- c(band_layers, p$layers)
+  p
+}
+
+# Thin wrapper: add bands to every plot in a list, then make them interactive.
+lj_render <- function(plotlist, clamp0 = FALSE)
+  htmltools::tagList(lapply(lapply(plotlist, add_lj_bands, clamp0 = clamp0), ggplotly))
 
 # The Aurora EVO runs SpectroFlo 4.x. Its Gain/rCV Archive (ArchivedDataEVO.csv)
 # is produced from the DailyQC reports by the 4.x parser. The page renders once
@@ -159,6 +207,8 @@ Dashboard data for the **Cytek Aurora EVO** last updated on **`r TheDate`**
 **First Column: Gain** Gain (Voltage) values set for instrument after QC. Changes over time reflective of laser health.
 **Second Column: rCV** Percentage Robust Coefficient of Variation (rCV) after QC. Higher values reflect decreased resolution between positive and negative for that detector.
 
+**Control bands:** each plot shows the robust centerline (median) with green (within ±2 SD) and amber (±2–3 SD) zones and red dashed action limits (±3 SD), computed from each detector's own history (robust SD = MAD; QC-fail points excluded from the baseline).
+
 For additional information concerning individual parameter tabs, navigate to the [Help](help.qmd) page.
 
 **About**
@@ -171,92 +221,92 @@ This dashboard was created with [Quarto](https://quarto.org/), based on work by 
 
 ```{r}
 #| title: UltraViolet
-htmltools::tagList(lapply(UltraVioletPlotsGain, ggplotly))
+lj_render(UltraVioletPlotsGain)
 ```
 
 ```{r}
 #| title: Violet
-htmltools::tagList(lapply(VioletPlotsGain, ggplotly))
+lj_render(VioletPlotsGain)
 ```
 
 ```{r}
 #| title: Blue
-htmltools::tagList(lapply(BluePlotsGain, ggplotly))
+lj_render(BluePlotsGain)
 ```
 
 ```{r}
 #| title: YellowGreen
-htmltools::tagList(lapply(YellowGreenPlotsGain, ggplotly))
+lj_render(YellowGreenPlotsGain)
 ```
 
 ```{r}
 #| title: Red
-htmltools::tagList(lapply(RedPlotsGain, ggplotly))
+lj_render(RedPlotsGain)
 ```
 
 ```{r}
 #| title: Scatter
-htmltools::tagList(lapply(ScatterPlotsGain, ggplotly))
+lj_render(ScatterPlotsGain)
 ```
 
 ```{r}
 #| title: LaserPower
-htmltools::tagList(lapply(LaserPowerPlotsGain, ggplotly))
+lj_render(LaserPowerPlotsGain)
 ```
 
 ```{r}
 #| title: LaserDelay
-htmltools::tagList(lapply(LaserDelayPlotsGain, ggplotly))
+lj_render(LaserDelayPlotsGain)
 ```
 
 ```{r}
 #| title: LaserScaling
-htmltools::tagList(lapply(ScalingPlotsGain, ggplotly))
+lj_render(ScalingPlotsGain)
 ```
 
 ## rCV {.tabset}
 
 ```{r}
 #| title: UltraViolet
-htmltools::tagList(lapply(UltraVioletPlotsRCV, ggplotly))
+lj_render(UltraVioletPlotsRCV, clamp0 = TRUE)
 ```
 
 ```{r}
 #| title: Violet
-htmltools::tagList(lapply(VioletPlotsRCV, ggplotly))
+lj_render(VioletPlotsRCV, clamp0 = TRUE)
 ```
 
 ```{r}
 #| title: Blue
-htmltools::tagList(lapply(BluePlotsRCV, ggplotly))
+lj_render(BluePlotsRCV, clamp0 = TRUE)
 ```
 
 ```{r}
 #| title: YellowGreen
-htmltools::tagList(lapply(YellowGreenPlotsRCV, ggplotly))
+lj_render(YellowGreenPlotsRCV, clamp0 = TRUE)
 ```
 
 ```{r}
 #| title: Red
-htmltools::tagList(lapply(RedPlotsRCV, ggplotly))
+lj_render(RedPlotsRCV, clamp0 = TRUE)
 ```
 
 ```{r}
 #| title: Scatter
-htmltools::tagList(lapply(ScatterPlotsRCV, ggplotly))
+lj_render(ScatterPlotsRCV, clamp0 = TRUE)
 ```
 
 ```{r}
 #| title: LaserPower
-htmltools::tagList(lapply(LaserPowerPlotsGain, ggplotly))
+lj_render(LaserPowerPlotsGain)
 ```
 
 ```{r}
 #| title: LaserDelay
-htmltools::tagList(lapply(LaserDelayPlotsGain, ggplotly))
+lj_render(LaserDelayPlotsGain)
 ```
 
 ```{r}
 #| title: LaserScaling
-htmltools::tagList(lapply(ScalingPlotsGain, ggplotly))
+lj_render(ScalingPlotsGain)
 ```
