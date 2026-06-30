@@ -130,6 +130,24 @@ lj_render_wg <- function(plotlist)
   htmltools::tagList(lapply(lapply(plotlist, add_westgard), ggplotly,
                             tooltip = c("x", "y", "text")))
 
+# Restrict a single named detector's plot to data on/after `cutoff` (a Date or
+# "YYYY-MM-DD" string), e.g. after a deliberate gain step, so its bands / Westgard
+# baseline and x-axis reflect only the new operating level. The trace layers
+# inherit p$data (waiver) and the band/Westgard helpers read p$data directly, so
+# replacing the matched plot's $data trims everything at once. Other plots in the
+# list are returned untouched.
+trim_detector_before <- function(plotlist, title, cutoff) {
+  cutoff <- as.Date(cutoff)
+  for (i in seq_along(plotlist)) {
+    p <- plotlist[[i]]
+    if (!is.null(p$labels$title) && p$labels$title == title && "DateTime" %in% names(p$data)) {
+      d <- p$data
+      plotlist[[i]]$data <- d[as.Date(d$DateTime) >= cutoff, , drop = FALSE]
+    }
+  }
+  plotlist
+}
+
 # Collect violations across a set of detector plots into one recent-first table.
 westgard_summary <- function(plotlist) {
   rows <- lapply(plotlist, function(p) {

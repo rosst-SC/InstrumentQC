@@ -76,6 +76,10 @@ UltraVioletPlotsGain <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=UltraViol
                       plotType = "individual", returntype = "plots", YAxisLabel = "Gain",
                       RepairVisits=Repair5L)
 
+# UV1-Gain was deliberately stepped to a higher gain on 2026-05-20; show and score
+# only the post-step data so its bands / Westgard baseline reflect the new level.
+UltraVioletPlotsGain <- trim_detector_before(UltraVioletPlotsGain, "UV1-Gain", "2026-05-20")
+
 VioletPlotsGain <- QC_Plots(x=x, FailedFlag=TRUE, MeasurementType=VioletGains,
                       plotType = "individual", returntype = "plots", strict = TRUE, YAxisLabel = "Gain",
                       RepairVisits=Repair5L)
