@@ -56,6 +56,9 @@ if (has_gain) {
     group_by(Date, detector) |> summarise(gain = dplyr::first(gain), .groups = "drop")
   pm <- pm |> left_join(glong, by = c("date" = "Date", "detector"))
 } else pm$gain <- NA_real_
+# The gain join coerces `detector` to character; restore the acquisition-order factor
+# so facet_wrap trends (and any default ordering) follow UV -> V -> B -> YG -> R.
+pm$detector <- factor(as.character(pm$detector), levels = detector_channels)
 pm <- pm |> mutate(mfi_norm = if_else(!is.na(gain) & gain > 0, median / gain, median))
 
 # ---- per-detector x per-run metrics ----
@@ -108,9 +111,9 @@ p8    <- pm |> filter(peak == n_peaks, in_range) |> select(date, detector, media
 # Staining index (lowest resolved peak vs peak 1)
 si_one <- function(g) {
   cand <- g$peak[g$peak > 1 & g$resolved & g$in_range]
-  if (!length(cand)) return(tibble(si = NA_real_))
+  if (!length(cand)) return(tibble(si = NA_real_, pos_peak = NA_integer_))
   p <- min(cand); m1 <- g$median[g$peak == 1]; rsd1 <- abs(g$rcv[g$peak == 1] * m1 / 100)
-  tibble(si = (g$median[g$peak == p] - m1) / (2 * rsd1))
+  tibble(si = (g$median[g$peak == p] - m1) / (2 * rsd1), pos_peak = as.integer(p))
 }
 si <- pm |> group_by(date, detector) |> group_modify(~ si_one(.x)) |> ungroup()
 
@@ -227,6 +230,7 @@ heat <- function(df, fill, title, sub = NULL, diverging = FALSE, limitsym = FALS
 }
 gp <- function(p, h = 620) ggplotly(p, tooltip = "text", height = h) |>
   plotly::config(displayModeBar = FALSE)
+cv_y_scale <- scale_y_continuous(expand = expansion(mult = c(0.06, 0.18)))
 
 # ---- Per-detector fold-change reference for the FC maps --------------------
 # Absolute heatmaps span orders of magnitude across detectors, so a single linear
@@ -265,9 +269,10 @@ if (fc_locked) {
 # DYNAMIC reference: each detector vs its own best (one-sided). deg >= 0 (0 = best).
 best_fc <- function(df, v, higher_better = TRUE) {
   df |> group_by(detector) |> mutate(
-    .best = { x <- .data[[v]][is.finite(.data[[v]])]
+    .val  = ifelse(is.finite(.data[[v]]) & .data[[v]] > 0, .data[[v]], NA_real_),  # log2 needs > 0
+    .best = { x <- .val[is.finite(.val)]
               if (!length(x)) NA_real_ else if (higher_better) max(x) else min(x) },
-    deg   = if (higher_better) log2(.best / .data[[v]]) else log2(.data[[v]] / .best),
+    deg   = if (higher_better) log2(.best / .val) else log2(.val / .best),
     fold  = 2^deg) |> ungroup()
 }
 heat_fc <- function(df, v, title, sub = NULL, higher_better = TRUE) {
@@ -367,7 +372,273 @@ gp(ovp, 680)
 
 # Detail {.tabset}
 
-## Sensitivity (Q & B)
+## Peak clustering
+
+The 8 RCP-30-5A populations are assigned **once per run** by model-based clustering
+(flowClust, K = 8) on the asinh-transformed anchor detectors, then read out in every
+detector. This is far more robust than per-detector peak finding: weak channels
+can't resolve the dim peaks alone, but the strong anchor detectors can, and a bead's
+population is fixed across all detectors. Labels are ordered 1–8 by ascending
+brightness. Clustering runs in `Process8Peak.R`; this page reads the persisted result.
+
+### 2D cluster assignment (V1-A × YG1-A)
+
+The per-run diagnostic: each run's gated beads shown on two detectors that both
+resolve all 8 peaks. A clean assignment shows **8 tight, ordered, single-coloured
+blobs** along the diagonal, with no interleaving.
+
+```{r}
+#| label: cluster-diag-2d
+#| output: asis
+clus_imgs <- sort(list.files("images/8peak_evo", pattern = "^cluster2d_.*[.]png$", full.names = TRUE))
+if (length(clus_imgs) == 0) cat("_No saved cluster images yet — run `scripts/Process8Peak.R`._\n\n") else {
+  cat("::: {layout-ncol=3}\n")
+  for (f in clus_imgs) cat(sprintf("![Run %s](../%s)\n\n", sub("^cluster2d_(.*)[.]png$","\\1",basename(f)), f))
+  cat(":::\n")
+}
+```
+
+### Cluster-size sanity
+
+RCP-30-5A mixes the 8 populations in ~equal proportions, so the cluster sizes should
+be roughly even — a quick numeric check that no population was split or merged.
+
+```{r}
+#| label: cluster-sizes
+#| fig-height: 3
+csz <- pm |> group_by(date, peak) |>
+  summarise(events = mean(n, na.rm = TRUE), .groups = "drop") |>
+  mutate(peak = factor(peak, levels = 1:n_peaks))
+gp(ggplot(csz, aes(factor(peak), events, fill = factor(date),
+                   text = sprintf("peak %s | %s<br>mean events %.0f", peak, date, events))) +
+     geom_col(position = position_dodge()) +
+     labs(title = "Cluster size per peak (events per run)", x = "Peak", y = "Events", fill = NULL) +
+     theme_bw(base_size = 10), 300)
+```
+
+## Tracking over time
+
+Each peak's median intensity and %CV against acquisition date — the QC payoff.
+Stable lines mean stable performance; a step or drift flags a detector/laser
+problem. Resolved, in-range peaks only. These fill in as runs accumulate (sparse,
+mostly points, with few dates so far).
+
+### Per-laser overview
+
+The 64 detectors collapsed to a 5-laser × date heatmap of peak-8 deviation from each
+detector's baseline (first run), averaged across the laser. A whole-row shift points
+to a laser-level issue (excitation power, alignment) rather than one detector.
+
+```{r}
+#| label: laser-overview
+#| fig-height: 3
+p8_base <- pm |> filter(peak == n_peaks, in_range) |> group_by(detector) |>
+  slice_min(date, n = 1, with_ties = FALSE) |>
+  transmute(detector, base_median = median) |> ungroup()
+laser_delta <- pm |> filter(peak == n_peaks, in_range) |>
+  left_join(p8_base, by = "detector") |>
+  mutate(delta_pct = (median - base_median) / base_median * 100,
+         laser = factor(laser_of(detector), levels = laser_levels)) |>
+  group_by(laser, date) |> summarise(delta_pct = mean(delta_pct, na.rm = TRUE), .groups = "drop")
+lim <- max(abs(laser_delta$delta_pct), na.rm = TRUE); if (!is.finite(lim) || lim == 0) lim <- 1
+gp(ggplot(laser_delta, aes(factor(date), laser, fill = delta_pct,
+        text = sprintf("%s laser | %s<br>%+.1f%% vs baseline", laser, date, delta_pct))) +
+     geom_tile(colour = "white") +
+     scale_y_discrete(limits = rev(laser_levels)) +
+     scale_fill_gradient2(low = "#b2182b", mid = "white", high = "#2166ac", midpoint = 0,
+                          limits = c(-lim, lim), name = "Peak 8\nΔ vs t0") +
+     labs(title = "Per-laser peak-8 deviation from baseline", x = NULL, y = "Laser") +
+     theme_bw(base_size = 11) +
+     theme(axis.text = element_text(size = 10)), 420)
+```
+
+::: {.callout-note collapse="false"}
+### Per-peak median intensity by date
+
+```{r}
+#| label: trend-median
+#| fig-height: 30
+trend <- pm |> filter(resolved, in_range) |> mutate(peak = factor(peak, levels = 1:n_peaks))
+ggplot(trend, aes(date, median, colour = peak, group = peak)) +
+  geom_line() + geom_point(size = 0.8) +
+  scale_y_flowjo_biexp(maxValue = biex_max, pos = biex_pos, neg = biex_neg, widthBasis = biex_width_basis) +
+  facet_wrap(~ detector, scales = "free_y", ncol = 4) +
+  labs(title = "Per-peak median intensity over time", x = NULL, y = "Median (biexp)", colour = "Peak") +
+  theme_bw(base_size = 8) +
+  theme(strip.text = element_text(size = 7), axis.text.x = element_text(size = 5, angle = 45, hjust = 1))
+```
+:::
+
+::: {.callout-note collapse="false"}
+### %robust-CV trend
+
+```{r}
+#| label: trend-cv
+#| fig-height: 30
+ggplot(trend, aes(date, rcv, colour = peak, group = peak)) +
+  geom_line() + geom_point(size = 0.8) +
+  facet_wrap(~ detector, scales = "free_y", ncol = 4) +
+  cv_y_scale +
+  labs(title = "Per-peak robust %CV over time", x = NULL, y = "Robust %CV", colour = "Peak") +
+  theme_bw(base_size = 8) +
+  theme(strip.text = element_text(size = 7), axis.text.x = element_text(size = 5, angle = 45, hjust = 1))
+```
+:::
+
+## Resolution & SI
+
+Number of the 8 peaks resolved per detector (0–8) and the staining index (lowest
+resolved peak vs blank). Detectors losing dim peaks over time = rising noise floor.
+
+```{r}
+#| label: res-heat
+gp(heat(res, "n_resolved", "Peaks resolved (0–8)"))
+```
+
+::: {layout-ncol=2}
+```{r}
+#| label: si-heat
+gp(heat(si |> filter(is.finite(si)), "si", "Staining index", "absolute; higher = better"))
+```
+
+```{r}
+#| label: si-heat-fc
+gp(heat_fc(si |> filter(is.finite(si)), "si", "Staining index — fold-change", "vs its own best; red = degraded", higher_better = TRUE))
+```
+:::
+
+## Staining index
+
+Sensitivity over time: how far the **first resolved peak above the blank** sits
+above peak 1, relative to peak 1's spread — the classical detector-sensitivity
+benchmark, $\mathrm{SI} = (\widetilde{m}_{\text{pos}} - \widetilde{m}_1)/(2\,\widetilde{\sigma}_1)$.
+Point colour marks which peak was used as the positive (it falls back from peak 2 to
+3, 4 … in weak detectors); a change in that reference for a detector is worth a look.
+A trend that drops = rising background or falling gain. The cross-detector snapshot
+is the SI heatmap under **Resolution & SI**.
+
+::: {.callout-note collapse="true"}
+### SI trend per detector (expand — one panel per detector)
+
+```{r}
+#| label: si-trend
+#| fig-height: 30
+ggplot(si |> filter(!is.na(si)), aes(date, si)) +
+  geom_line(aes(group = detector), colour = "grey55") +
+  geom_point(aes(colour = factor(pos_peak)), size = 1.2) +
+  facet_wrap(~ detector, scales = "free_y", ncol = 4) +
+  labs(title = "Staining index over time (lowest resolved peak vs blank)",
+       x = NULL, y = "SI", colour = "Pos peak") +
+  theme_bw(base_size = 8) +
+  theme(strip.text = element_text(size = 7), axis.text.x = element_text(size = 5, angle = 45, hjust = 1))
+```
+:::
+
+## %CV & noise floor
+
+Peak 8 (brightest) uses **robust %CV** — it has a well-defined mean (~1–2% when
+healthy). The blank (peak 1) uses its **absolute robust spread** (IQR/1.349), not
+%CV: the blank sits near zero, so %CV explodes when the mean dips toward zero even
+though the actual spread is unchanged (e.g. UV8 on 2026-05-29). A rising blank
+spread is a genuine noise-floor increase.
+
+```{r}
+#| label: cv8-heat
+gp(heat(cvp8, "cv8", "Peak-8 %CV", "brightest population (mean well-defined)"))
+```
+
+::: {layout-ncol=2}
+```{r}
+#| label: cv1-heat
+gp(heat(cvp1, "sd1", "Peak-1 noise floor", "absolute robust spread (IQR/1.349), not %CV"))
+```
+
+```{r}
+#| label: cv1-heat-fc
+gp(heat_fc(cvp1, "sd1", "Noise floor — fold-change", "lower is better; red = noisier than its best", higher_better = FALSE))
+```
+:::
+
+```{r}
+#| label: cv8-trend
+#| fig-height: 3.5
+cl <- clim(cvp8, "cv8")
+cl_lat <- cvp8 |> group_by(laser = factor(laser_of(detector), levels = laser_levels), date) |>
+  summarise(cv8 = mean(cv8, na.rm = TRUE), .groups = "drop")
+band <- cvp8 |> mutate(laser = factor(laser_of(detector), levels = laser_levels)) |>
+  group_by(laser) |> summarise(mu = mean(cv8, na.rm=TRUE), sd = sd(cv8, na.rm=TRUE), .groups="drop")
+gp(ggplot(cl_lat, aes(date, cv8, colour = laser, group = laser)) +
+     geom_line() + geom_point() +
+     labs(title = "Mean peak-8 %CV per laser (± control context as runs accumulate)",
+          x = NULL, y = "Peak-8 %CV") + theme_bw(base_size = 10), 320)
+```
+
+## Brightest peak (peak 8) %CV
+
+A focused per-detector view of peak 8 alone over time: the brightest population is
+normally the tightest (~1–2%), so any rise is a sensitive indicator of saturation,
+noise, or linearity issues at the top of the dynamic range. The cross-detector
+snapshot and per-laser mean are under **%CV & noise floor**.
+
+::: {.callout-note collapse="true"}
+### Peak-8 %CV trend per detector (expand — one panel per detector)
+
+```{r}
+#| label: peak8-cv-trend
+#| fig-height: 30
+peak8 <- pm |> filter(peak == n_peaks, in_range)
+ggplot(peak8, aes(date, rcv, group = detector)) +
+  geom_line(colour = "grey60") + geom_point(size = 1, colour = "firebrick") +
+  facet_wrap(~ detector, scales = "free_y", ncol = 4) +
+  cv_y_scale +
+  labs(title = "Peak-8 robust %CV over time", x = NULL, y = "Peak-8 %CV") +
+  theme_bw(base_size = 8) +
+  theme(strip.text = element_text(size = 7), axis.text.x = element_text(size = 5, angle = 45, hjust = 1))
+```
+:::
+
+## Spectral signature
+
+Cosine similarity of each peak's normalised 64-detector signature to the baseline
+run. 1.000 = unchanged; a drop indicates an optical / alignment / filter change
+that per-detector intensities alone would miss.
+
+```{r}
+#| label: spec-heat
+sp <- spec |> mutate(peak = factor(peak, levels = 1:n_peaks))
+gp(ggplot(sp, aes(factor(date), peak, fill = cosine,
+                  text = sprintf("peak %s | %s<br>cosine %.4f", peak, date, cosine))) +
+     geom_tile(colour = "white") +
+     scale_fill_viridis_c(option = "magma", limits = c(min(0.99, min(sp$cosine, na.rm=TRUE)), 1)) +
+     labs(title = "Spectral-signature similarity to baseline", x = NULL, y = "Peak") +
+     theme_bw(base_size = 10), 300)
+```
+
+## Per-run diagnostics
+
+The bead gate saved by `Process8Peak.R` per run — it should land on the dense
+scatter cluster. (The 2D cluster-assignment diagnostic is in the **Peak clustering** tab.)
+
+### Bead gate (FSC-A × SSC-A)
+
+```{r}
+#| label: gate-images
+#| output: asis
+gate_imgs <- sort(list.files("images/8peak_evo", pattern = "^gate_.*[.]png$", full.names = TRUE))
+if (length(gate_imgs) == 0) cat("_No saved gate images yet — run `scripts/Process8Peak.R`._\n\n") else {
+  cat("::: {layout-ncol=3}\n")
+  for (f in gate_imgs) cat(sprintf("![Run %s](../%s)\n\n", sub("^gate_(.*)[.]png$","\\1",basename(f)), f))
+  cat(":::\n")
+}
+```
+
+## Sensitivity (Q & B) · in development
+
+::: {.callout-warning}
+**In development.** The Q/B sensitivity model, MEF calibration, linearity, and gain
+context below are still being validated — treat as preliminary, not yet for routine
+QC decisions.
+:::
 
 **Q** = detection efficiency (photoelectrons per unit signal, gain-normalised) — a
 drop means the detector collects less light per event. **B** = background/noise
@@ -453,7 +724,7 @@ if (nrow(flagged)) {
     summarise(`detectors suppressed` = n(),
               `example reasons` = paste(head(sort(unique(qflag)), 3), collapse = " | "),
               .groups = "drop")
-  knitr::kable(fl, caption = "Detector-runs where the Q/B fit was suppressed as ill-conditioned or too noisy (blank tiles above) — NOT a sensitivity gain. The cause appears in the %CV & noise-floor panel below (e.g. the 2026-05-29 red-laser broadening).")
+  knitr::kable(fl, caption = "Detector-runs where the Q/B fit was suppressed as ill-conditioned or too noisy (blank tiles above) — NOT a sensitivity gain. The cause appears in the %CV & noise-floor panel above (e.g. the 2026-05-29 red-laser broadening).")
 }
 ```
 
@@ -550,68 +821,7 @@ knitr::kable(stn_tab, caption = sprintf(
   "STN-17 closed form, run %s. MEF blank is extrapolated through the per-run calibration; Q (STN-17) is 1/(CV²_blank × MEF_blank), shown beside the multi-point regression Q for comparison.", latest))
 ```
 
-## Resolution & SI
-
-Number of the 8 peaks resolved per detector (0–8) and the staining index (lowest
-resolved peak vs blank). Detectors losing dim peaks over time = rising noise floor.
-
-```{r}
-#| label: res-heat
-gp(heat(res, "n_resolved", "Peaks resolved (0–8)"))
-```
-
-::: {layout-ncol=2}
-```{r}
-#| label: si-heat
-gp(heat(si |> filter(is.finite(si)), "si", "Staining index", "absolute; higher = better"))
-```
-
-```{r}
-#| label: si-heat-fc
-gp(heat_fc(si |> filter(is.finite(si)), "si", "Staining index — fold-change", "vs its own best; red = degraded", higher_better = TRUE))
-```
-:::
-
-## %CV & noise floor
-
-Peak 8 (brightest) uses **robust %CV** — it has a well-defined mean (~1–2% when
-healthy). The blank (peak 1) uses its **absolute robust spread** (IQR/1.349), not
-%CV: the blank sits near zero, so %CV explodes when the mean dips toward zero even
-though the actual spread is unchanged (e.g. UV8 on 2026-05-29). A rising blank
-spread is a genuine noise-floor increase.
-
-```{r}
-#| label: cv8-heat
-gp(heat(cvp8, "cv8", "Peak-8 %CV", "brightest population (mean well-defined)"))
-```
-
-::: {layout-ncol=2}
-```{r}
-#| label: cv1-heat
-gp(heat(cvp1, "sd1", "Peak-1 noise floor", "absolute robust spread (IQR/1.349), not %CV"))
-```
-
-```{r}
-#| label: cv1-heat-fc
-gp(heat_fc(cvp1, "sd1", "Noise floor — fold-change", "lower is better; red = noisier than its best", higher_better = FALSE))
-```
-:::
-
-```{r}
-#| label: cv8-trend
-#| fig-height: 3.5
-cl <- clim(cvp8, "cv8")
-cl_lat <- cvp8 |> group_by(laser = factor(laser_of(detector), levels = laser_levels), date) |>
-  summarise(cv8 = mean(cv8, na.rm = TRUE), .groups = "drop")
-band <- cvp8 |> mutate(laser = factor(laser_of(detector), levels = laser_levels)) |>
-  group_by(laser) |> summarise(mu = mean(cv8, na.rm=TRUE), sd = sd(cv8, na.rm=TRUE), .groups="drop")
-gp(ggplot(cl_lat, aes(date, cv8, colour = laser, group = laser)) +
-     geom_line() + geom_point() +
-     labs(title = "Mean peak-8 %CV per laser (± control context as runs accumulate)",
-          x = NULL, y = "Peak-8 %CV") + theme_bw(base_size = 10), 320)
-```
-
-## Linearity
+### Linearity
 
 **MEF-calibrated** (Spherotech RCP-30-5A lot **AS01**) for the 9 anchor detectors,
 plus a rank-based R² overview for all 64. On the log–log fit a slope ≠ 1 or
@@ -646,14 +856,14 @@ sens |> group_by(detector) |> arrange(date) |>
   knitr::kable(caption = "Per-anchor linearity & detection limit (latest run). MEF LOD = smallest distinguishable equivalent-fluorophore amount (gain-independent); lower = more sensitive.")
 ```
 
-### Rank-based overview (all detectors)
+#### Rank-based overview (all detectors)
 
 ```{r}
 #| label: lin-heat
 gp(heat(lin, "r2", "Linearity R² (log MFI vs peak rank)", "1 = perfectly log-linear"))
 ```
 
-## Gain context
+### Gain context
 
 The daily-QC **gain** applied on each run (rising = APD/laser aging — the main QC
 dashboard's signal) and **MFI/gain** (gain-removed bead intensity; should be flat
@@ -685,52 +895,4 @@ gp(heat_fc(p8, "mfi_norm", "MFI/gain — fold-change", "vs its own best; red = d
 #| eval: !expr '!has_gain'
 #| output: asis
 cat("_Gain archive (data/EVO/Archive/ArchivedDataEVO.csv) not found — gain context unavailable._\n")
-```
-
-## Spectral signature
-
-Cosine similarity of each peak's normalised 64-detector signature to the baseline
-run. 1.000 = unchanged; a drop indicates an optical / alignment / filter change
-that per-detector intensities alone would miss.
-
-```{r}
-#| label: spec-heat
-sp <- spec |> mutate(peak = factor(peak, levels = 1:n_peaks))
-gp(ggplot(sp, aes(factor(date), peak, fill = cosine,
-                  text = sprintf("peak %s | %s<br>cosine %.4f", peak, date, cosine))) +
-     geom_tile(colour = "white") +
-     scale_fill_viridis_c(option = "magma", limits = c(min(0.99, min(sp$cosine, na.rm=TRUE)), 1)) +
-     labs(title = "Spectral-signature similarity to baseline", x = NULL, y = "Peak") +
-     theme_bw(base_size = 10), 300)
-```
-
-## Per-run diagnostics
-
-Saved by `Process8Peak.R` per run. The bead gate should land on the dense
-scatter cluster; the 2D cluster view should show 8 tight, ordered blobs.
-
-### Bead gate (FSC-A × SSC-A)
-
-```{r}
-#| label: gate-images
-#| output: asis
-gate_imgs <- sort(list.files("images/8peak_evo", pattern = "^gate_.*[.]png$", full.names = TRUE))
-if (length(gate_imgs) == 0) cat("_No saved gate images yet — run `scripts/Process8Peak.R`._\n\n") else {
-  cat("::: {layout-ncol=3}\n")
-  for (f in gate_imgs) cat(sprintf("![Run %s](../%s)\n\n", sub("^gate_(.*)[.]png$","\\1",basename(f)), f))
-  cat(":::\n")
-}
-```
-
-### 2D cluster assignment (V1-A × YG1-A)
-
-```{r}
-#| label: cluster2d-images
-#| output: asis
-clus_imgs <- sort(list.files("images/8peak_evo", pattern = "^cluster2d_.*[.]png$", full.names = TRUE))
-if (length(clus_imgs) == 0) cat("_No saved cluster images yet — run `scripts/Process8Peak.R`._\n\n") else {
-  cat("::: {layout-ncol=3}\n")
-  for (f in clus_imgs) cat(sprintf("![Run %s](../%s)\n\n", sub("^cluster2d_(.*)[.]png$","\\1",basename(f)), f))
-  cat(":::\n")
-}
 ```
