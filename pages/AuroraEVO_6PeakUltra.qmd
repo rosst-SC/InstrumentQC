@@ -4,6 +4,8 @@ subtitle: "Spectral QC: instrument-performance tracking from URCP-38-2K beads"
 date: today
 format:
   html:
+    page-layout: full
+    embed-resources: true
     toc: true
     toc-depth: 2
     code-fold: true
@@ -98,25 +100,56 @@ runs_no_gain <- pm |> filter(peak == n_peaks) |>
 # (CV^2 should rise with 1/x), or an inflated brightest-peak CV.
 qb_fit <- function(d, xvar = "mfi_norm", true_b = FALSE,
                    min_r2 = 0.8, min_mono = 0.3, max_bright_cv = 15) {
-  d <- d[which(d$resolved & d$in_range & !is.na(d[[xvar]]) & d[[xvar]] > 0), ]
+  d0 <- d                                                              # full peak set (incl. blank) for SD-ratio gate
+  # The blank (peak 1) is used ONLY as the blank (background/SD-ratio below, and the
+  # STN-17 closed form) -- NOT as a regression bead (STN-17/Hoffman); so the fit uses
+  # the resolved FLUORESCENT peaks only (peak > 1).
+  d  <- d[which(d$resolved & d$in_range & d$peak > 1 & !is.na(d[[xvar]]) & d[[xvar]] > 0), ]
   if (nrow(d) < 3)
-    return(tibble(intr_cv = NA_real_, Q = NA_real_, B = NA_real_, npts = nrow(d), qflag = "n<3"))
-  cv2 <- (d$rcv / 100)^2; inv <- 1 / d[[xvar]]
-  f2  <- lm(cv2 ~ inv); s1 <- coef(f2)[2]
-  r2  <- summary(f2)$r.squared
-  mono <- suppressWarnings(stats::cor(inv, cv2, method = "spearman"))   # CV^2 vs 1/x: want > 0
-  bcv  <- d$rcv[which.max(d[[xvar]])]                                   # brightest in-range peak rCV
-  intr <- sqrt(pmax(coef(f2)[1], 0))
-  flags <- c(if (!is.finite(s1) || s1 <= 0)              "flat/neg slope"          else NULL,
-             if (is.finite(r2)   && r2   < min_r2)        sprintf("R2=%.2f", r2)    else NULL,
-             if (is.finite(mono) && mono < min_mono)      "non-monotonic"          else NULL,
-             if (is.finite(bcv)  && bcv  > max_bright_cv) sprintf("brightCV=%.0f%%", bcv) else NULL)
+    return(tibble(intr_cv = NA_real_, Q = NA_real_, B = NA_real_, npts = nrow(d), qflag = "n<3", qadv = NA_character_))
+  o    <- order(d[[xvar]])                                             # dim -> bright
+  cv2  <- (d$rcv / 100)^2; inv <- 1 / d[[xvar]]
+  # Intrinsic CV is MEASURED, not extrapolated: the brightest in-range peak's rCV is
+  # the high-signal floor (its photon term ~0; Hoffman & Wood 2007). Subtract it and
+  # fit the intrinsic-corrected CV^2 through the origin, so Q (linear coef) and B/Q
+  # (quadratic coef) come from a 2-param fit rather than a 3-param fit with a free,
+  # extrapolated intercept. INVERSE-VARIANCE WEIGHTED (Var(CV^2) ~ CV^4 at const n),
+  # since Hoffman warns unweighted fits are dominated by one extreme point and the
+  # error in B is up to 10x that in Q.
+  intr <- d$rcv[o[length(o)]] / 100                                    # measured intrinsic CV (brightest)
+  cv2c <- pmax(cv2 - intr^2, 0)                                        # intrinsic-corrected CV^2
+  w    <- 1 / pmax(cv2, 1e-6)^2                                        # inverse-variance weights
+  s1   <- coef(lm(cv2c ~ 0 + inv, weights = w))[1]                     # slope = 1/Q (weighted, through origin)
+  r2   <- summary(lm(cv2 ~ inv))$r.squared                            # linearity diagnostic (unweighted)
+  mono <- suppressWarnings(stats::cor(inv, cv2, method = "spearman"))  # CV^2 vs 1/x: want > 0
+  # Validity-gate reference peaks (Chase 1998; Perfetto 2014): "Dim-2" = the dimmest
+  # fit peak (the blank is already excluded from d, so o[1] is the dimmest fluorescent)
+  # vs the blank (peak 1, from d0) for the SD ratio. Applied ADVISORY below, not as a
+  # hard gate -- spectral rainbow beads often miss these thresholds.
+  dim_i   <- o[1]                                                     # dimmest fluorescent = Chase "Dim-2"
+  rcv_dim <- d$rcv[dim_i]; rcv_brt <- d$rcv[o[length(o)]]
+  sd_dim  <- d$rcv[dim_i] / 100 * d$median[dim_i]
+  bl      <- d0[which(d0$peak == 1), ]                               # blank absent in the MEF fit (lin_mef
+  sd_blk  <- if (nrow(bl)) bl$rcv[1] / 100 * bl$median[1] else NA_real_  # has no blank) -> SDratio then skipped
+  # HARD guards: the fit is ill-conditioned -> suppress Q/B (blank tile, NOT a gain).
+  flags <- c(if (!is.finite(s1) || s1 <= 0)                    "flat slope"              else NULL,
+             if (is.finite(r2)   && r2   < min_r2)              sprintf("R2=%.2f", r2)    else NULL,
+             if (is.finite(mono) && mono < min_mono)            "non-monotonic"          else NULL,
+             if (is.finite(intr) && intr * 100 > max_bright_cv) sprintf("brightCV=%.0f%%", intr * 100) else NULL)
+  # ADVISORY photon-domination criteria (Chase 1998; Hoffman allows 2x once the CV is
+  # intrinsic-corrected, which it is here): dim-peak rCV >= 2x brightest, dim-peak rSD
+  # >= 3x blank. These do NOT suppress -- on spectral rainbow beads they are frequently
+  # unmet (in-range peaks sit in the bright/intrinsic-dominated regime and the "blank"
+  # is itself a dim bead), which is the caveat to flag, not a fit failure.
+  adv <- c(if (is.finite(rcv_dim) && is.finite(rcv_brt) && rcv_dim < 2 * rcv_brt) sprintf("CVratio=%.1f", rcv_dim / rcv_brt) else NULL,
+           if (is.finite(sd_blk)  && sd_dim < 3 * sd_blk)       sprintf("SDratio=%.1f", sd_dim / sd_blk) else NULL)
+  qadv <- if (length(adv)) paste(adv, collapse = "; ") else NA_character_
   if (length(flags))
     return(tibble(intr_cv = intr, Q = NA_real_, B = NA_real_, npts = nrow(d),
-                  qflag = paste(flags, collapse = "; ")))
-  s2 <- if (nrow(d) >= 4) coef(lm(cv2 ~ inv + I(inv^2)))[3] else NA_real_
+                  qflag = paste(flags, collapse = "; "), qadv = qadv))
+  s2 <- if (nrow(d) >= 4) coef(lm(cv2c ~ 0 + inv + I(inv^2), weights = w))[2] else NA_real_
   B  <- if (true_b) s2 / s1 else s2
-  tibble(intr_cv = intr, Q = 1 / s1, B = B, npts = nrow(d), qflag = NA_character_)
+  tibble(intr_cv = intr, Q = 1 / s1, B = B, npts = nrow(d), qflag = NA_character_, qadv = qadv)
 }
 qb <- pm |> group_by(run_label, detector) |> group_modify(~ qb_fit(.x)) |> ungroup()
 
@@ -136,8 +169,9 @@ si_one <- function(g) {
 }
 si <- pm |> group_by(run_label, detector) |> group_modify(~ si_one(.x)) |> ungroup()
 
-# Linearity (rank-based, all 64): measured MFI vs peak rank, per detector-run.
-lin <- pm |> filter(resolved, in_range) |> group_by(run_label, detector) |>
+# Linearity (rank-based, all 64): measured MFI vs peak rank, per detector-run. Blank
+# (peak 1) excluded -- it is the blank, not a fluorescence-ladder level (matches calib).
+lin <- pm |> filter(resolved, in_range, peak > 1) |> group_by(run_label, detector) |>
   filter(n() >= 3) |>
   summarise(r2 = summary(lm(log10(median) ~ peak))$r.squared, .groups = "drop")
 
@@ -193,27 +227,35 @@ if (has_mef) {
   qb_mef <- lin_mef |> group_by(run_label, detector, fluor) |>
     group_modify(~ qb_fit(.x, xvar = "MEF", true_b = TRUE)) |> ungroup()
   # ---- Literal STN-17 closed form (independent cross-check) ----
-  # Blank (peak 1) extrapolated through the calibration; dim reference bead = the
-  # lowest data peak carrying an assigned MEF (peak 2); brightest = peak 6
-  # (high-signal CV floor).
-  dim_ref_peak <- if (nrow(lin_mef)) min(lin_mef$peak) else 2L
+  # All three populations selected PER DETECTOR-RUN from lin_mef (already resolved,
+  # in-range, MEF-assigned): blank (Dim Bead 1 = peak 1, extrapolated via calibration);
+  # dim reference = the LOWEST fluorescent peak resolved from the blank; brightest = the
+  # HIGHEST resolved in-range peak (not a fixed peak 6, which may be saturated) so its
+  # CV^2 matches the high-signal floor the regression uses for intrinsic.
   p_cv <- function(p) pm |> filter(peak == p, median > 0) |>
     mutate(detector = as.character(detector)) |> semi_join(mef_map, by = "detector") |>
     transmute(run_label, detector, m = median, cv = rcv / 100)
-  b1   <- p_cv(1)            |> rename(m1 = m, cv1 = cv)
-  bdim <- p_cv(dim_ref_peak) |> rename(mdim = m, cvdim = cv) |>
-    left_join(mefv |> filter(peak == dim_ref_peak) |> select(detector, MEFdim = MEF), by = "detector")
-  btop <- p_cv(n_peaks) |> transmute(run_label, detector, cvtop = cv)
+  b1   <- p_cv(1) |> rename(m1 = m, cv1 = cv)
+  bdim <- lin_mef |> group_by(run_label, detector) |> filter(peak == min(peak)) |> ungroup() |>
+    transmute(run_label, detector, cvdim = rcv / 100, MEFdim = MEF, dimpeak = as.integer(peak))
+  btop <- lin_mef |> group_by(run_label, detector) |> filter(peak == max(peak)) |> ungroup() |>
+    transmute(run_label, detector, cvtop = rcv / 100, toppeak = as.integer(peak))
   stn17 <- calib |> select(run_label, detector, fluor, a, b) |>
     left_join(b1,   by = c("run_label", "detector")) |>
     left_join(bdim, by = c("run_label", "detector")) |>
     left_join(btop, by = c("run_label", "detector")) |>
     mutate(
       MEF_blank = 10^((log10(m1) - a) / b),                  # blank MEF via calib
-      Q_stn     = 1 / (cv1^2 * MEF_blank),
-      SD2_blank = MEF_blank^2 * (cv1^2   - cvtop^2),
-      SD2_dim   = MEFdim^2    * (cvdim^2 - cvtop^2),
-      B_stn     = (SD2_blank / SD2_dim) * MEF_blank)
+      # GUARD: like qb_fit, the closed form is invalid on a noisy run. It needs the
+      # blank/dim peaks BROADER than the brightest (cv1,cvdim > cvtop) or the SD^2
+      # terms go negative, and a finite positive extrapolated MEF_blank; else -> NA.
+      ok_blank  = is.finite(MEF_blank) & MEF_blank > 0 & is.finite(cv1) & is.finite(cvtop) & cv1 > cvtop,
+      ok_dim    = is.finite(cvdim) & is.finite(cvtop) & cvdim > cvtop,
+      Q_stn     = ifelse(ok_blank, 1 / (cv1^2 * MEF_blank), NA_real_),
+      SD2_blank = ifelse(ok_blank, MEF_blank^2 * (cv1^2   - cvtop^2), NA_real_),
+      SD2_dim   = ifelse(ok_dim,   MEFdim^2    * (cvdim^2 - cvtop^2), NA_real_),
+      B_stn     = ifelse(ok_blank & ok_dim & is.finite(SD2_dim) & SD2_dim > 0,
+                         (SD2_blank / SD2_dim) * MEF_blank, NA_real_))
 }
 
 # Spectral signature drift: cosine similarity of the 64-detector signature of each
@@ -456,9 +498,10 @@ mostly points, with few timestamps so far).
 
 ### Per-laser overview
 
-The 64 detectors collapsed to a 5-laser × run heatmap of peak-6 deviation from each
-detector's baseline (first run), averaged across the laser. A whole-row shift points
-to a laser-level issue (excitation power, alignment) rather than one detector.
+Two 5-laser × run heatmaps of peak-6 deviation from each detector's baseline (first
+run), averaged across the laser. **Top:** median intensity shift (blue = dimmer,
+red = brighter). **Bottom:** %rCV shift (blue = tighter, red = broader). A whole-row
+shift points to a laser-level issue; an isolated tile flags a single detector.
 
 ```{r}
 #| label: laser-overview
@@ -476,9 +519,32 @@ gp(ggplot(laser_delta, aes(run_label, laser, fill = delta_pct,
         text = sprintf("%s laser | %s<br>%+.1f%% vs baseline", laser, run_label, delta_pct))) +
      geom_tile(colour = "white") +
      scale_y_discrete(limits = rev(laser_levels)) +
-     scale_fill_gradient2(low = "#b2182b", mid = "white", high = "#2166ac", midpoint = 0,
-                          limits = c(-lim, lim), name = "Peak 6\nΔ vs t0") +
-     labs(title = "Per-laser peak-6 deviation from baseline", x = NULL, y = "Laser") +
+     scale_fill_gradient2(low = "#2166ac", mid = "white", high = "#b2182b", midpoint = 0,
+                          limits = c(-lim, lim), name = "Peak 6\nΔ median\nvs t0") +
+     labs(title = "Per-laser peak-6 median deviation from baseline", x = NULL, y = "Laser") +
+     theme_bw(base_size = 11) +
+     theme(axis.text = element_text(size = 10)), 420)
+```
+
+```{r}
+#| label: laser-overview-cv
+#| fig-height: 3
+p6_base_cv <- pm |> filter(peak == n_peaks, in_range) |> group_by(detector) |>
+  slice_min(run_label, n = 1, with_ties = FALSE) |>
+  transmute(detector, base_rcv = rcv) |> ungroup()
+laser_delta_cv <- pm |> filter(peak == n_peaks, in_range) |>
+  left_join(p6_base_cv, by = "detector") |>
+  mutate(delta_pct = (rcv - base_rcv) / base_rcv * 100,
+         laser = factor(laser_of(detector), levels = laser_levels)) |>
+  group_by(laser, run_label) |> summarise(delta_pct = mean(delta_pct, na.rm = TRUE), .groups = "drop")
+lim_cv <- max(abs(laser_delta_cv$delta_pct), na.rm = TRUE); if (!is.finite(lim_cv) || lim_cv == 0) lim_cv <- 1
+gp(ggplot(laser_delta_cv, aes(run_label, laser, fill = delta_pct,
+        text = sprintf("%s laser | %s<br>%+.1f%% vs baseline rCV", laser, run_label, delta_pct))) +
+     geom_tile(colour = "white") +
+     scale_y_discrete(limits = rev(laser_levels)) +
+     scale_fill_gradient2(low = "#2166ac", mid = "white", high = "#b2182b", midpoint = 0,
+                          limits = c(-lim_cv, lim_cv), name = "Peak 6\nΔ %rCV\nvs t0") +
+     labs(title = "Per-laser peak-6 %rCV deviation from baseline", x = NULL, y = "Laser") +
      theme_bw(base_size = 11) +
      theme(axis.text = element_text(size = 10)), 420)
 ```
@@ -488,12 +554,13 @@ gp(ggplot(laser_delta, aes(run_label, laser, fill = delta_pct,
 
 ```{r}
 #| label: trend-median
-#| fig-height: 30
+#| fig-height: 22
+#| fig-width: 18
 trend <- pm |> filter(resolved, in_range) |> mutate(peak = factor(peak, levels = 1:n_peaks))
 ggplot(trend, aes(run_label, median, colour = peak, group = peak)) +
   geom_line() + geom_point(size = 0.8) +
   scale_y_flowjo_biexp(maxValue = biex_max, pos = biex_pos, neg = biex_neg, widthBasis = biex_width_basis) +
-  facet_wrap(~ detector, scales = "free_y", ncol = 4) +
+  facet_wrap(~ detector, scales = "free_y", ncol = 6) +
   labs(title = "Per-peak median intensity over time (peaks 1–6; 1 = blank)",
        x = NULL, y = "Median (biexp)", colour = "Peak") +
   theme_bw(base_size = 8) +
@@ -506,10 +573,11 @@ ggplot(trend, aes(run_label, median, colour = peak, group = peak)) +
 
 ```{r}
 #| label: trend-cv
-#| fig-height: 30
+#| fig-height: 22
+#| fig-width: 18
 ggplot(trend, aes(run_label, rcv, colour = peak, group = peak)) +
   geom_line() + geom_point(size = 0.8) +
-  facet_wrap(~ detector, scales = "free_y", ncol = 4) +
+  facet_wrap(~ detector, scales = "free_y", ncol = 6) +
   cv_y_scale +
   labs(title = "Per-peak robust %%CV over time (peaks 1–6; 1 = blank)",
        x = NULL, y = "Robust %%CV", colour = "Peak") +
@@ -557,11 +625,12 @@ is the SI heatmap under **Resolution & SI**.
 
 ```{r}
 #| label: si-trend
-#| fig-height: 30
+#| fig-height: 22
+#| fig-width: 18
 ggplot(si |> filter(!is.na(si)), aes(run_label, si)) +
   geom_line(aes(group = detector), colour = "grey55") +
   geom_point(aes(colour = factor(pos_peak)), size = 1.2) +
-  facet_wrap(~ detector, scales = "free_y", ncol = 4) +
+  facet_wrap(~ detector, scales = "free_y", ncol = 6) +
   labs(title = "Staining index over time (lowest resolved peak vs blank, peak 1)",
        x = NULL, y = "SI", colour = "Pos peak") +
   theme_bw(base_size = 8) +
@@ -619,11 +688,12 @@ dynamic range. The cross-detector snapshot and per-laser mean are under
 
 ```{r}
 #| label: peak6-cv-trend
-#| fig-height: 30
+#| fig-height: 22
+#| fig-width: 18
 peak6 <- pm |> filter(peak == n_peaks, in_range)
 ggplot(peak6, aes(run_label, rcv, group = detector)) +
   geom_line(colour = "grey60") + geom_point(size = 1, colour = "firebrick") +
-  facet_wrap(~ detector, scales = "free_y", ncol = 4) +
+  facet_wrap(~ detector, scales = "free_y", ncol = 6) +
   cv_y_scale +
   labs(title = "Peak-6 robust %%CV over time (brightest URCP-38-2K level)",
        x = NULL, y = "Peak-6 %%CV") +
@@ -677,12 +747,16 @@ preliminary, not yet for routine QC decisions.
 
 **Q** = detection efficiency (photoelectrons per unit signal, gain-normalised) — a
 drop means the detector collects less light per event. **B** = background/noise
-term; **intrinsic CV** = the high-signal noise floor (bead + optics). Estimated
-per detector from CV² vs 1/MFI across the resolved peaks. Because `Q = 1/slope`
+term; **intrinsic CV** = the high-signal noise floor (bead + optics), **measured**
+as the brightest resolved peak's CV. Q and B are estimated per detector from the
+intrinsic-corrected CV² vs 1/MFI across the resolved peaks. Because `Q = 1/slope`
 blows up when the slope nears zero, fits that are **ill-conditioned** — near-flat
-or negative slope, R² < 0.8, a non-monotonic CV profile, or a brightest-peak CV
-> 15% — are **suppressed** (left blank) rather than reported as a phantom Q spike;
-the underlying cause then shows in the %CV panel.
+slope, R² < 0.8, a non-monotonic CV profile, or a brightest-peak CV > 15% — are
+**suppressed** (left blank) rather than reported as a phantom Q spike; the
+underlying cause then shows in the %CV panel. Separately, runs whose beads fail the
+**photon-domination** check (dim-peak CV < 2× the bright peak, or dim-peak SD < 3×
+the blank; Chase 1998) are kept but flagged **advisory** — on spectral rainbow beads
+many runs fall short of that ideal, so those Q/B are lower-confidence rather than wrong.
 
 ::: {.callout-note collapse="true"}
 ## Method & provenance — read me
@@ -692,8 +766,10 @@ This is the **Q–B detector-sensitivity model** of Hoffman & Wood (Wood JC,
 Hoffman, *Cytometry* 1998;33:267–279; Hoffman & Wood, *Current Protocols in
 Cytometry* Unit 1.20, 2007), the same model behind Spherotech's **STN-17** and
 BD's **CS&T Qr/Br**. Total spread decomposes as
-`CV² = CV_intr² + (1/Q)(1/S) + (B/Q)(1/S²)`; fitting CV² vs 1/S gives intrinsic CV
-(intercept), `1/Q` (linear term) and `B/Q` (curvature).
+`CV² = CV_intr² + (1/Q)(1/S) + (B/Q)(1/S²)`. Following Hoffman & Wood, the intrinsic
+CV is taken directly from the **brightest resolved peak** and subtracted; the
+intrinsic-corrected CV² is then fit vs 1/S through the origin, giving `1/Q` (linear
+term) and `B/Q` (curvature).
 
 **The panel-wide values use gain-normalised MFI (`S = MFI/gain`), not MEF, so Q
 and B are a *relative, non-normalised* index** — valid for **single-detector
@@ -701,6 +777,14 @@ trend monitoring (Levey-Jennings)**, *not* cross-detector comparison, and expect
 small steps when a bead lot changes. Absolute, gain-independent sensitivity lives
 in the **MEF-unit Q/B** and **detection-limit (MEF)** panels below, on the anchor
 detectors.
+
+**Two method caveats (Hoffman & Wood 2007).** (1) *Linear scale.* The Q/B model
+assumes photoelectron (Poisson) statistics on a linearly-amplified signal; Aurora
+MFI and robust CV are taken on the linear scale, which satisfies this — log-amp
+data would make B in particular unreliable. (2) *Red / far-red detectors.* Hoffman
+notes dim Rainbow beads can carry too high an intrinsic CV to give valid Q/B on
+red-laser channels; URCP-38-2K spans a wider range, but the same spectral-mismatch
+caution applies, so read red / far-red Q/B with extra care.
 :::
 
 ```{r}
@@ -723,12 +807,15 @@ gp(heat_fc(qb, "Q", "Q — fold-change (per detector)", "vs its own best; red = 
 ```
 :::
 
-**Background B** is shown absolute only: the relative B is a fit coefficient that can
-be ≤ 0, so a fold-change vs best is undefined for it.
+**Background B/Q (relative).** The relative fit reports the raw `I(inv²)` coefficient,
+which is **B/Q**, not B — a change here can be driven by background *or* by efficiency.
+The canonical, blank-derived **B** in true MEF units is in the STN-17 panel below
+(Chase & Hoffman 1998). Shown absolute only: this coefficient can be ≤ 0, so a
+fold-change vs best is undefined for it.
 
 ```{r}
 #| label: b-heat
-gp(heat(qb |> filter(is.finite(B)), "B", "Background B", "absolute — higher = more background/noise"))
+gp(heat(qb |> filter(is.finite(B)), "B", "Background B/Q (relative)", "curvature coefficient — not blank-derived B; higher = more background/noise"))
 ```
 
 ```{r}
@@ -739,19 +826,30 @@ if (nrow(flagged)) {
     summarise(`detectors suppressed` = n(),
               `example reasons` = paste(head(sort(unique(qflag)), 3), collapse = " | "),
               .groups = "drop")
-  knitr::kable(fl, caption = "Detector-runs where the Q/B fit was suppressed as ill-conditioned (blank tiles above) — NOT a sensitivity gain. The cause appears in the %%CV & noise-floor panel.")
+  knitr::kable(fl, caption = "SUPPRESSED (blank tiles above): detector-runs where the Q/B fit was ill-conditioned — NOT a sensitivity gain. The cause appears in the %CV & noise-floor panel.")
+}
+advised <- qb |> filter(is.finite(Q), !is.na(qadv))
+if (nrow(advised)) {
+  av <- advised |> group_by(run_label) |>
+    summarise(`detectors advised` = n(), .groups = "drop")
+  knitr::kable(av, caption = "ADVISORY (Q/B still shown, lower-confidence): detector-runs whose beads did not meet the photon-domination criteria (Chase 1998, intrinsic-corrected: dim-peak CV < 2x the bright peak, or dim-peak SD < 3x the blank). Common for spectral rainbow beads, so treat these Q/B as indicative, not absolute.")
 }
 ```
 
 ```{r}
 #| label: q-trend
 #| fig-height: 3.5
-ql <- qb |> mutate(laser = factor(laser_of(detector), levels = laser_levels)) |>
-  group_by(laser, run_label) |> summarise(Q = median(Q, na.rm = TRUE), .groups = "drop")
-gp(ggplot(ql, aes(run_label, Q, colour = laser, group = laser,
-                  text = sprintf("%s laser | %s<br>median Q %.3g", laser, run_label, Q))) +
-     geom_line() + geom_point() +
-     labs(title = "Median detection efficiency per laser over time", x = NULL, y = "Q (median)") +
+# Relative Q is in arbitrary per-detector units, so a median of ABSOLUTE Q across
+# detectors mixes incommensurable scales (BD/Chase: relative Q is single-detector
+# only). Aggregate the per-detector % change from baseline instead — a percentage
+# IS comparable across detectors (BD: a 50% change is a 50% change in any units).
+ql <- metrics |> filter(is.finite(Q_d)) |>
+  mutate(laser = factor(laser_of(detector), levels = laser_levels)) |>
+  group_by(laser, run_label) |> summarise(Qd = median(Q_d, na.rm = TRUE), .groups = "drop")
+gp(ggplot(ql, aes(run_label, Qd, colour = laser, group = laser,
+                  text = sprintf("%s laser | %s<br>median ΔQ %.1f%% vs baseline", laser, run_label, Qd))) +
+     geom_line() + geom_point() + geom_hline(yintercept = 0, linetype = "dashed", colour = "grey60") +
+     labs(title = "Median Q change from baseline per laser", x = NULL, y = "Q change vs baseline (%)") +
      theme_bw(base_size = 10) + theme(axis.text.x = element_text(angle = 30, hjust = 1)), 320)
 ```
 
@@ -777,8 +875,10 @@ The Q/B heatmaps above are in **gain-normalised MFI** units — comparable acros
 full 64-detector panel, but arbitrary. On the **anchor detectors** (where the
 URCP-38-2K certificate gives a per-peak MEF) the *same* CV² regression is run
 against true **MEF**, yielding Q and B in absolute, gain-independent units matching
-the Spherotech **STN-17** definition. The **intrinsic CV** (high-signal floor) is
-scale-invariant, so it should agree between the two fits — a built-in check.
+the Spherotech **STN-17** definition. The **intrinsic CV** is the measured
+brightest-peak CV, common to both fits by construction, so it is no longer a
+cross-check between them — it trends on its own as an alignment/bead-health signal.
+The meaningful cross-check here is that **Q** (and **B**) co-track between the fits.
 
 ```{r}
 #| label: qb-mef-trend
@@ -800,21 +900,23 @@ latest_mef <- max(qb_mef$run_label)
 cmp <- qb_mef |> filter(run_label == latest_mef) |>
   transmute(Detector = detector, Fluor = fluor,
             `Q (MEF)` = signif(Q, 3), `B (MEF)` = signif(B, 3),
-            `intr.CV %% (MEF fit)` = round(100 * intr_cv, 2)) |>
+            `intrinsic CV %` = round(100 * intr_cv, 2)) |>
   left_join(qb |> mutate(detector = as.character(detector)) |> filter(run_label == latest_mef) |>
-              transmute(Detector = detector,
-                        `Q (relative)` = signif(Q, 3),
-                        `intr.CV %% (rel. fit)` = round(100 * intr_cv, 2)),
+              transmute(Detector = detector, `Q (relative)` = signif(Q, 3)),
             by = "Detector")
 knitr::kable(cmp, caption = sprintf(
-  "Anchor-detector sensitivity, run %s. The two intrinsic-CV columns should agree (scale-invariant); Q (MEF) is the absolute, gain-independent value, Q (relative) the gain-normalised one.", latest_mef))
+  "Anchor-detector sensitivity, run %s. Intrinsic CV is the measured brightest-peak CV (common to both fits). Q (MEF) is the absolute, gain-independent value; Q (relative) the gain-normalised one — the two Q columns should co-track.", latest_mef))
 ```
 
-The regression above uses every resolved peak. As an independent check, the
-**literal STN-17 closed form** uses just three populations — the blank (peak 1),
-the dimmest fluorescent bead carrying an assigned MEF (peak 3) and the brightest
-(peak 6). The blank carries no assigned MEF, so it is **extrapolated through the
-per-run calibration**, then `Q = 1/(CV²_blank × MEF_blank)`. The two Q estimates
+The regression above uses the resolved fluorescent peaks (the blank is used only as
+the blank). As an independent check, the **literal STN-17 closed form** uses just
+three populations — the blank (**Dim Bead 1 = peak 1**), one **dim bead**, and the
+**brightest**. Both the dim and bright beads are **per-detector**: the dim bead is the
+*lowest fluorescent population resolved from the blank* and the bright bead is the
+*highest resolved in-range population* on that detector (not a fixed peak 6, which may
+be saturated) — so they vary detector-to-detector (see the **Dim peak** / **Top peak**
+columns) and the bright bead matches the high-signal floor the regression uses. The blank carries no assigned MEF, so it is **extrapolated through
+the per-run calibration**, then `Q = 1/(CV²_blank × MEF_blank)`. The two Q estimates
 won't match exactly (3-point algebra vs. multi-point fit) but should track each
 other; large divergence flags a nonlinear detector.
 
@@ -824,13 +926,13 @@ other; large divergence flags a nonlinear detector.
 stn_tab <- stn17 |> filter(run_label == latest_mef) |>
   transmute(Detector = detector, Fluor = fluor,
             `MFI blank` = signif(m1, 3), `MEF blank (extrap.)` = signif(MEF_blank, 3),
-            `CV%% blank` = round(100 * cv1, 1),
+            `CV% blank` = round(100 * cv1, 1), `Dim peak` = dimpeak, `Top peak` = toppeak,
             `Q (STN-17)` = signif(Q_stn, 3), `B (STN-17)` = signif(B_stn, 3)) |>
   left_join(qb_mef |> filter(run_label == latest_mef) |>
               transmute(Detector = detector, `Q (MEF regr.)` = signif(Q, 3)),
             by = "Detector")
 knitr::kable(stn_tab, caption = sprintf(
-  "STN-17 closed form, run %s. MEF blank is extrapolated through the per-run calibration; Q (STN-17) is 1/(CV²_blank × MEF_blank), beside the multi-point regression Q.", latest_mef))
+  "STN-17 closed form, run %s. MEF blank is extrapolated through the per-run calibration; Q (STN-17) is 1/(CV²_blank × MEF_blank), beside the multi-point regression Q. Ill-conditioned rows (blank/dim peak not broader than the bright peak, e.g. a noisy-laser run) are shown as NA rather than a negative value.", latest_mef))
 ```
 
 ### Linearity
