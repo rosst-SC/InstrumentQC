@@ -35,3 +35,7 @@ DailyQCReport_*.CSV
 # diagnostic images under images/6peak_ultra_evo/, not the subproject internals.
 6peak Ultra_tracking_spectral/
 *.csv.bak
+
+# Copyrighted journal-article PDFs used as local research reference —
+# keep the .md bibliography/summaries, never push the full-text PDFs.
+Sensitivity Articles/*.pdf
