@@ -1,0 +1,241 @@
+---
+title: "6 Peak Ultra — Aurora EVO · Dashboard"
+format:
+  dashboard:
+    orientation: columns
+---
+
+```{r}
+#| label: load
+#| message: FALSE
+#| include: false
+source("pages/_6peak_load.R")
+```
+
+```{r}
+#| label: latest-run-status
+#| include: false
+latest_run   <- runs[length(runs)]
+latest_id    <- pm |> filter(run_label == latest_run) |> pull(run) |> unique() |> head(1)
+sat_latest   <- pm |> filter(run_label == latest_run, peak == n_peaks) |>
+  summarise(saturated = sum(!in_range), total = dplyr::n())
+res_latest   <- res |> filter(run_label == latest_run) |>
+  summarise(mean_resolved = mean(n_resolved, na.rm = TRUE))
+sat_ok       <- sat_latest$saturated == 0
+sat_status   <- if (sat_ok) {
+  paste0(sat_latest$total, " / ", sat_latest$total, " detectors OK")
+} else {
+  paste0(sat_latest$saturated, " / ", sat_latest$total, " saturated at peak 6")
+}
+sat_color    <- if (sat_ok) "success" else "warning"
+res_status   <- sprintf("%.1f / %d peaks", res_latest$mean_resolved, n_peaks)
+res_color    <- if (res_latest$mean_resolved >= n_peaks - 0.5) "success" else "warning"
+```
+
+```{r}
+#| label: laser-trends
+#| include: false
+# Per-laser peak-6 deviation from baseline (median intensity + %rCV). Page-local
+# derivations from the shared `pm` table -- mirrors the detailed page's
+# "Per-laser overview" panel, kept here rather than in _6peak_load.R since it's
+# a display-only reshaping, not core metric math.
+p6_base_cv <- pm |> filter(peak == n_peaks, in_range) |> group_by(detector) |>
+  slice_min(run_label, n = 1, with_ties = FALSE) |>
+  transmute(detector, base_rcv = rcv) |> ungroup()
+laser_delta_cv <- pm |> filter(peak == n_peaks, in_range) |>
+  left_join(p6_base_cv, by = "detector") |>
+  mutate(delta_pct = (rcv - base_rcv) / base_rcv * 100,
+         laser = factor(laser_of(detector), levels = laser_levels)) |>
+  group_by(laser, run_label) |> summarise(delta_pct = mean(delta_pct, na.rm = TRUE), .groups = "drop")
+
+# Median Q change from baseline per laser (relative, gain-normalised units).
+ql <- metrics |> filter(is.finite(Q_d)) |>
+  mutate(laser = factor(laser_of(detector), levels = laser_levels)) |>
+  group_by(laser, run_label) |> summarise(Qd = median(Q_d, na.rm = TRUE), .groups = "drop")
+
+# Cluster-size sanity: mean events per peak per run.
+csz <- pm |> group_by(run_label, peak) |>
+  summarise(events = mean(n, na.rm = TRUE), .groups = "drop") |>
+  mutate(peak = factor(peak, levels = 1:n_peaks))
+```
+
+## {.sidebar}
+Data last updated: run **`r latest_run`** (`r n_runs` run(s) total)
+
+Secondary QC for the Aurora EVO from SPHERO **URCP-38-2K** Ultra Rainbow beads
+— 6 populations (blank + 5 fluorescent levels). Columns are grouped by theme:
+**clustering/gating health**, **intensity & resolution**, and
+**sensitivity (Q/B/MEF)**.
+
+This is a compact, card-based companion to the full
+[detailed 6-peak Ultra page](AuroraEVO_6PeakUltra.qmd), which carries the
+complete per-detector trends, tables, and methodology notes.
+
+See [Help](help.qmd) for QC status definitions.
+
+## Clustering & gating {width="30%"}
+
+### Row {height="30%"}
+
+#### Column
+
+```{r}
+#| content: valuebox
+#| title: "Saturation (latest run)"
+#| icon: droplet-half
+
+list(value = sat_status, color = sat_color)
+```
+
+#### Column
+
+```{r}
+#| content: valuebox
+#| title: "Resolution (latest run)"
+#| icon: bullseye
+
+list(value = res_status, color = res_color)
+```
+
+### Row {height="70%" .tabset}
+
+#### Latest run images
+
+```{r}
+#| label: latest-cluster-images
+#| output: asis
+clus_img <- file.path("../images/6peak_ultra_evo", paste0("cluster2d_", latest_id, ".png"))
+gate_img <- file.path("../images/6peak_ultra_evo", paste0("gate_", latest_id, ".png"))
+if (file.exists(sub("^\\.\\./", "", clus_img)) && file.exists(sub("^\\.\\./", "", gate_img))) {
+  cat(sprintf("::: {layout-ncol=2}\n![Cluster assignment (V8-A x B9-A)](%s)\n\n![Bead gate (FSC-A x SSC-A)](%s)\n:::\n\n",
+              clus_img, gate_img))
+} else {
+  cat("_No saved diagnostic images for the latest run yet._\n\n")
+}
+```
+
+Latest-run diagnostics only. All runs are on the
+[detailed page](AuroraEVO_6PeakUltra.qmd#peak-clustering).
+
+#### Cluster-size sanity
+
+```{r}
+#| label: cluster-sizes
+#| fig-height: 3
+gp(ggplot(csz, aes(factor(peak), events, fill = run_label,
+                   text = sprintf("peak %s | %s<br>mean events %.0f", peak, run_label, events))) +
+     geom_col(position = position_dodge()) +
+     labs(title = "Cluster size per peak (events per run; peak 1 = blank)",
+          x = "Peak", y = "Events", fill = NULL) +
+     theme_bw(base_size = 10), 300)
+```
+
+## Intensity & resolution {.tabset}
+
+### %CV trend by laser
+
+::: {layout-ncol=1}
+
+```{r}
+#| label: laser-cv-trend
+#| fig-height: 3
+lim_cv <- max(abs(laser_delta_cv$delta_pct), na.rm = TRUE); if (!is.finite(lim_cv) || lim_cv == 0) lim_cv <- 1
+gp(ggplot(laser_delta_cv, aes(run_label, laser, fill = delta_pct,
+        text = sprintf("%s laser | %s<br>%+.1f%% vs baseline rCV", laser, run_label, delta_pct))) +
+     geom_tile(colour = "white") +
+     scale_y_discrete(limits = rev(laser_levels)) +
+     scale_fill_gradient2(low = "#2166ac", mid = "white", high = "#b2182b", midpoint = 0,
+                          limits = c(-lim_cv, lim_cv), name = "Peak 6\nΔ %rCV\nvs t0") +
+     labs(title = "Per-laser peak-6 %rCV deviation from baseline", x = NULL, y = "Laser") +
+     theme_bw(base_size = 11) + theme(axis.text = element_text(size = 10)), 300)
+```
+
+Per-detector faceted trends (median, %CV, staining index) are on the
+[detailed page](AuroraEVO_6PeakUltra.qmd#tracking-over-time) — omitted here to
+keep this view fast and scannable.
+
+:::
+
+### Resolution & staining index
+
+```{r}
+#| label: res-heat
+gp(heat(res, "n_resolved", "Peaks resolved (0–6)"))
+```
+
+```{r}
+#| label: si-heat
+gp(heat(si |> filter(is.finite(si)), "si", "Staining index", "absolute; higher = better"))
+```
+
+### %CV & noise floor
+
+```{r}
+#| label: cvtop-heat
+gp(heat(cvtop, "cvt", "Peak-6 %CV", "brightest population (mean well-defined)"))
+```
+
+```{r}
+#| label: cv1-heat
+gp(heat(cvp1, "sd1", "Peak-1 noise floor", "absolute robust spread (IQR/1.349), not %CV"))
+```
+
+## Sensitivity (Q/B/MEF) {width="35%"}
+
+::: {.callout-warning appearance="simple"}
+**In development.** Treat as preliminary — see the
+[detailed page's sensitivity section](AuroraEVO_6PeakUltra.qmd#sensitivity-q-b-in-development)
+for full methodology and provenance.
+:::
+
+### Row {height="55%" .tabset}
+
+#### Q trend (relative)
+
+```{r}
+#| label: q-trend
+#| fig-height: 3.5
+gp(ggplot(ql, aes(run_label, Qd, colour = laser, group = laser,
+                  text = sprintf("%s laser | %s<br>median ΔQ %.1f%% vs baseline", laser, run_label, Qd))) +
+     geom_line() + geom_point() + geom_hline(yintercept = 0, linetype = "dashed", colour = "grey60") +
+     labs(title = "Median Q change from baseline per laser", x = NULL, y = "Q change vs baseline (%)") +
+     theme_bw(base_size = 10) + theme(axis.text.x = element_text(angle = 30, hjust = 1)), 320)
+```
+
+#### Q heatmap (all detectors)
+
+```{r}
+#| label: q-heat
+gp(heat(qb, "Q", "Detection efficiency Q", "absolute — gain-normalised; higher = better"))
+```
+
+#### MEF detection limit
+
+```{r}
+#| label: mef-lod-trend
+#| eval: !expr has_mef
+#| fig-height: 3.5
+gp(ggplot(sens, aes(run_label, MEF_LOD, colour = detector, group = detector,
+                    text = sprintf("%s (%s)<br>%s<br>MEF LOD %.0f", detector, fluor, run_label, MEF_LOD))) +
+     geom_line() + geom_point() + scale_y_log10() +
+     labs(title = "Detection limit (MEF) per anchor detector — URCP-38-2K",
+          x = NULL, y = "MEF at detection threshold (log)") +
+     theme_bw(base_size = 10) + theme(axis.text.x = element_text(angle = 30, hjust = 1)), 320)
+```
+
+```{r}
+#| label: no-mef-note
+#| eval: !expr '!has_mef'
+#| output: asis
+cat("_No URCP-38-2K MEF certificate found (`data/reference/URCP-38-2K_MEF.csv`) — MEF detection-limit view unavailable._\n")
+```
+
+### Row {height="45%"}
+
+#### Linearity — placeholder
+
+```{r}
+#| label: linearity-placeholder
+#| output: asis
+htmltools::HTML("<em>Placeholder — MEF-calibrated linearity view to be filled in a follow-up pass. See the detailed page's <a href='AuroraEVO_6PeakUltra.qmd#linearity'>Linearity</a> section for the current per-anchor-detector plots and table.</em>")
+```

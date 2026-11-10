@@ -13,6 +13,7 @@
 # HistoricalData.csv. A backup of HistoricalData.csv is written alongside it.
 #
 # Usage:  Rscript "EVO_4xParser.R"   (run from this folder)
+# run: Rscript scripts/EVO_4xParser.R in terminal if I Ross am performing manually
 # =============================================================================
 
 suppressMessages({

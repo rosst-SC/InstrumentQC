@@ -111,13 +111,30 @@ Processing is split from display so renders stay reproducible:
 
 ## Q/B sensitivity model
 
-Before touching `qb_fit()`, the `stn17` block, or `mef_map` in
-`pages/AuroraEVO_8Peak.qmd` / `pages/AuroraEVO_6PeakUltra.qmd`, read
-`Sensitivity Articles/QB_sensitivity_reference.md` — it ties every modeling
-choice to a source (Hoffman & Wood 2007, Chase 1998, STN-17, BD CS&T Qr/Br).
-Key point: the model is `CV² = CV_intr² + (1/Q)(1/S) + (B/Q)(1/S²)` fit as
-**CV² vs 1/MFI** on gain-normalised intensity — fitting variance-vs-mean instead
-gives a wrong (negative) B.
+Two methods coexist (since 2026-11-11):
+
+- **EVO 6-peak Ultra (current method)**: `pages/_qb_parks.R`, sourced by the shared
+  loader `pages/_6peak_load.R`. That loader is used by both `AuroraEVO_6PeakUltra.qmd`
+  and `_Dashboard.qmd`; edit the loader, not the page setup chunk. The method is
+  Parks 2017 weighted quadratic `V = c0 + c1·M + c2·M²`, fit on all non-saturated
+  peaks **including the blank**, then the Parks 2018 **2+2SD limit of resolution**.
+  - Headline: `lor_mfi = 4·(c1 + blank SD)` for all 64 detectors. Daily QC pins the
+    MFI scale, so it tracks the MEF limit; it's background-limited and stable at
+    about 5–10%. Q itself has about 30% fit SE per run.
+  - MEF-unit values exist for the 18 `mef_map` detectors. Only some pass the
+    log–log slope check (0.9–1.1); the rest are flagged via `mef_ok`.
+  - Needs the archive's raw `sd` (blank = right-half SD) and `saturated` columns
+    from `Process6PeakUltra.R`. Never use `rcv × median`.
+  - Read `Sensitivity Articles/QB_2plus2SD_method_summary.md` first.
+  - The previous version is archived in `_attic/6peak_ultra_v1_2026-11-11/`.
+- **EVO 8-peak (old method)**: `qb_fit()` (CV² vs 1/MFI, brightest-CV subtraction)
+  plus the STN-17 closed form, documented in
+  `Sensitivity Articles/QB_sensitivity_reference.md`. The method summary lists why
+  these were superseded. To port it, reuse `_qb_parks.R`; the 8-peak archive needs
+  the same `sd`/`saturated` columns first.
+
+**Render locale:** run `quarto render` with `LANG=en_AU.UTF-8 LC_ALL=en_AU.UTF-8`.
+Without a UTF-8 locale, R writes Unicode in plot titles and captions as `<U+2014>` etc.
 
 ## Git / deploy
 

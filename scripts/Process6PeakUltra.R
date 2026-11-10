@@ -86,22 +86,38 @@ robust_cv <- function(x) 100 * (IQR(x) / 1.349) / abs(median(x))
 assign_peaks <- function(ff, cfg) {
   te  <- asinh(exprs(ff)[, cfg$anchor_detectors, drop = FALSE] / cfg$cluster_cofactor)
   set.seed(1)   # flowClust uses random EM starts; seed for reproducible peak labels/rCVs
+  # min.count/max.count = -1: keep events piled at the scale limits (flowClust's
+  # default silently drops them; Sensitivity project assign_peaks()).
   fit <- flowClust(flowFrame(te), varNames = cfg$anchor_detectors,
-                   K = cfg$n_peaks, B = 500, trans = 0)
+                   K = cfg$n_peaks, B = 500, trans = 0, min.count = -1, max.count = -1)
   lab <- flowClust::Map(fit, rm.outliers = FALSE)
   brightness <- tapply(rowMeans(te), lab, median)
   rank_map   <- setNames(rank(brightness), names(brightness))
   as.integer(rank_map[as.character(lab)])
 }
 
+# Per-peak spread in RAW MFI for the Parks 2017 / 2+2SD sensitivity fit
+# (Sensitivity project peak_stats(); see Sensitivity Articles/QB_2plus2SD_method_summary.md):
+#   sd_iqr   = IQR/1.349                 (fluorescent peaks)
+#   sd_upper = P84.13 - P50              (right-half SD; used for the blank, Chase 1998)
+#   sd       = sd_upper for peak 1, sd_iqr otherwise -- use THIS, never rcv*median
+#   frac_sat = share of events >= 98% of $PnR; saturated = frac_sat > 0.5%
+peak_spread <- function(v, max_range) {
+  q <- quantile(v, c(0.1587, 0.25, 0.5, 0.75, 0.8413), names = FALSE)
+  c(sd_iqr = (q[4] - q[2]) / 1.349, sd_upper = q[5] - q[3],
+    frac_sat = mean(v >= 0.98 * max_range))
+}
+
 peak_metrics_one <- function(ff, lab, name, detector_channels, cfg) {
   run <- run_id(name); dt <- parse_run_datetime(name)
   e <- exprs(ff); np <- cfg$n_peaks
+  rng <- setNames(as.numeric(pData(parameters(ff))$range), colnames(e))
   bind_rows(lapply(detector_channels, function(d) {
     a     <- asinh(e[, d] / cfg$cluster_cofactor)
     med_a <- tapply(a, lab, median)[as.character(1:np)]
     sd_a  <- tapply(a, lab, function(z) IQR(z) / 1.349)[as.character(1:np)]
     gap   <- pmin(c(Inf, diff(med_a)), c(diff(med_a), Inf))
+    sp    <- t(vapply(1:np, function(p) peak_spread(e[lab == p, d], rng[[d]]), numeric(3)))
     data.frame(
       file = name, run = run, datetime = dt, date = as.Date(dt),
       detector = d, peak = 1:np,
@@ -109,7 +125,11 @@ peak_metrics_one <- function(ff, lab, name, detector_channels, cfg) {
       rcv      = tapply(e[, d], lab, robust_cv)[as.character(1:np)],
       n        = as.integer(table(factor(lab, levels = 1:np))),
       in_range = tapply(e[, d], lab, median)[as.character(1:np)] < cfg$biex_max,
-      resolved = gap > cfg$resolution_k * sd_a
+      resolved = gap > cfg$resolution_k * sd_a,
+      sd_iqr   = sp[, "sd_iqr"], sd_upper = sp[, "sd_upper"],
+      sd       = ifelse(1:np == 1, sp[, "sd_upper"], sp[, "sd_iqr"]),
+      frac_sat = sp[, "frac_sat"], max_range = rng[[d]],
+      saturated = sp[, "frac_sat"] > 0.005
     )
   }))
 }
@@ -155,7 +175,15 @@ process_new <- function(cfg) {
 
   done <- character(0)
   if (file.exists(cfg$results_file)) {
-    done <- as.character(unique(read_csv(cfg$results_file, show_col_types = FALSE)$run))
+    prior0 <- read_csv(cfg$results_file, show_col_types = FALSE)
+    # Schema upgrade: an archive without the raw-SD columns (pre-2026-11 v1) is
+    # rebuilt from scratch so every run carries sd/saturated for the Parks fit.
+    if (all(c("sd", "saturated") %in% names(prior0))) {
+      done <- as.character(unique(prior0$run))
+    } else {
+      message("Archive lacks sd/saturated columns - reprocessing ALL runs.")
+      file.remove(cfg$results_file)
+    }
   }
   gate_png <- function(r) file.path(cfg$diag_dir, paste0("gate_",      r, ".png"))
   clus_png <- function(r) file.path(cfg$diag_dir, paste0("cluster2d_", r, ".png"))

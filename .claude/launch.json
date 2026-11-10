@@ -6,6 +6,12 @@
       "runtimeExecutable": "quarto",
       "runtimeArgs": ["preview", "--port", "4200", "--no-browser"],
       "port": 4200
+    },
+    {
+      "name": "docs-static",
+      "runtimeExecutable": "quarto",
+      "runtimeArgs": ["preview", "--no-render", "--no-watch-inputs", "--port", "4300", "--no-browser"],
+      "port": 4300
     }
   ]
 }
