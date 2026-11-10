@@ -25,8 +25,7 @@ beads. The set resolves into **6 populations** — blank particles (peak 1) plus
 fluorescent rainbow levels (peaks 2–6). **Note on the Aurora:** daily QC adjusts
 each APD's *gain* to pin bead MFI to a target, so raw MFI is held ~constant by
 design — the informative signals are the ones gain can't compensate:
-**sensitivity (2+2SD limit of resolution, Q & B)**, **resolution**, **%CV**, **linearity**, and
-**spectral-signature stability**. Heavy FCS processing is done once by
+**sensitivity (2+2SD limit of resolution, Q & B)**, **%CV**, and **linearity**. Heavy FCS processing is done once by
 `scripts/Process6PeakUltra.R`; this page reads the `peak_metrics.csv` archive
 (+ the daily-QC gain) so it stays light.
 
@@ -39,6 +38,8 @@ if (n_runs < 5) cat(sprintf(
 ```
 
 # Executive summary
+
+:::: {.callout-note collapse="false" title="Executive summary — run status and latest-vs-baseline overview (click to collapse)"}
 
 ```{r}
 #| label: run-status
@@ -81,9 +82,13 @@ ovp <- ggplot(ov, aes(metric, detector, fill = pmax(pmin(delta, lim), -lim),
 gp(ovp, 680)
 ```
 
+::::
+
 # Detail {.tabset}
 
 ## Peak clustering
+
+:::: {.callout-note collapse="true" title="Peak clustering — cluster images and cluster sizes (click to expand)"}
 
 The 6 URCP-38-2K populations are assigned **once per run** by model-based clustering
 (flowClust, K = 6) on the asinh-transformed anchor detectors, then read out in every
@@ -130,6 +135,8 @@ gp(ggplot(csz, aes(factor(peak), events, fill = run_label,
           x = "Peak", y = "Events", fill = NULL) +
      theme_bw(base_size = 10), 300)
 ```
+
+::::
 
 ## Tracking over time
 
@@ -210,76 +217,6 @@ ggplot(trend, aes(run_label, median, colour = peak, group = peak)) +
 ```
 :::
 
-::: {.callout-note collapse="false"}
-### %robust-CV trend
-
-```{r}
-#| label: trend-cv
-#| fig-height: 22
-#| fig-width: 18
-ggplot(trend, aes(run_label, rcv, colour = peak, group = peak)) +
-  geom_line() + geom_point(size = 0.8) +
-  facet_wrap(~ detector, scales = "free_y", ncol = 6) +
-  cv_y_scale +
-  labs(title = "Per-peak robust %%CV over time (peaks 1–6; 1 = blank)",
-       x = NULL, y = "Robust %%CV", colour = "Peak") +
-  theme_bw(base_size = 8) +
-  theme(strip.text = element_text(size = 7), axis.text.x = element_text(size = 5, angle = 45, hjust = 1))
-```
-:::
-
-## Resolution & SI
-
-Number of the 6 populations resolved per detector (0–6) and the staining index
-(lowest resolved peak vs the blank). Detectors losing dim peaks over time = rising
-noise floor.
-
-```{r}
-#| label: res-heat
-gp(heat(res, "n_resolved", "Peaks resolved (0–6)"))
-```
-
-::: {layout-ncol=2}
-```{r}
-#| label: si-heat
-gp(heat(si |> filter(is.finite(si)), "si", "Staining index", "absolute; higher = better"))
-```
-
-```{r}
-#| label: si-heat-fc
-gp(heat_fc(si |> filter(is.finite(si)), "si", "Staining index — fold-change", "vs its own best; red = degraded", higher_better = TRUE))
-```
-:::
-
-## Staining index
-
-Sensitivity over time: how far the **first resolved peak above the blank** sits
-above peak 1 (blank particles), relative to the blank's spread — the classical
-detector-sensitivity benchmark,
-$\mathrm{SI} = (\widetilde{m}_{\text{pos}} - \widetilde{m}_1)/(2\,\widetilde{\sigma}_1)$.
-Point colour marks which peak was used as the positive (it falls back from peak 2 toward
-peak 6 in weak detectors); a change in that reference for a detector is worth a look.
-A trend that drops = rising background or falling gain. The cross-detector snapshot
-is the SI heatmap under **Resolution & SI**.
-
-::: {.callout-note collapse="true"}
-### SI trend per detector (expand — one panel per detector)
-
-```{r}
-#| label: si-trend
-#| fig-height: 22
-#| fig-width: 18
-ggplot(si |> filter(!is.na(si)), aes(run_label, si)) +
-  geom_line(aes(group = detector), colour = "grey55") +
-  geom_point(aes(colour = factor(pos_peak)), size = 1.2) +
-  facet_wrap(~ detector, scales = "free_y", ncol = 6) +
-  labs(title = "Staining index over time (lowest resolved peak vs blank, peak 1)",
-       x = NULL, y = "SI", colour = "Pos peak") +
-  theme_bw(base_size = 8) +
-  theme(strip.text = element_text(size = 7), axis.text.x = element_text(size = 5, angle = 45, hjust = 1))
-```
-:::
-
 ## %CV & noise floor
 
 Peak 6 (brightest) uses **robust %CV** — it has a well-defined mean (~1–2% when
@@ -344,24 +281,9 @@ ggplot(peak6, aes(run_label, rcv, group = detector)) +
 ```
 :::
 
-## Spectral signature
-
-Cosine similarity of each peak's normalised 64-detector signature to the baseline
-run. 1.000 = unchanged; a drop indicates an optical / alignment / filter change
-that per-detector intensities alone would miss.
-
-```{r}
-#| label: spec-heat
-sp <- spec |> mutate(peak = factor(peak, levels = 1:n_peaks))
-gp(ggplot(sp, aes(run_label, peak, fill = cosine,
-                  text = sprintf("peak %s | %s<br>cosine %.4f", peak, run_label, cosine))) +
-     geom_tile(colour = "white") +
-     scale_fill_viridis_c(option = "magma", limits = c(min(0.99, min(sp$cosine, na.rm=TRUE)), 1)) +
-     labs(title = "Spectral-signature similarity to baseline", x = NULL, y = "Peak") +
-     theme_bw(base_size = 10) + theme(axis.text.x = element_text(angle = 30, hjust = 1)), 300)
-```
-
 ## Per-run diagnostics
+
+:::: {.callout-note collapse="true" title="Per-run diagnostics — bead gate images (click to expand)"}
 
 The bead gate saved by `Process6PeakUltra.R` per run — it should land on the dense
 scatter cluster. (The 2D cluster-assignment diagnostic is in the **Peak clustering** tab.)
@@ -378,6 +300,8 @@ if (length(gate_imgs) == 0) cat("_No saved gate images yet — run `scripts/Proc
   cat(":::\n")
 }
 ```
+
+::::
 
 ## Sensitivity (2+2SD, Q & B)
 
@@ -607,7 +531,7 @@ stable).
 #| label: gain-missing-note
 #| output: asis
 if (length(runs_no_gain)) cat(sprintf(
-  "::: {.callout-warning appearance='simple'}\nNo daily-QC gain found in the archive for **%s** — these run(s) are shown blank on every gain-normalised panel (relative Q, MFI/gain, and the executive overview's Q & MFI rows) rather than mixed onto a raw-MFI scale. Their other metrics (2+2SD, B, MEF-unit values, linearity, resolution, %%CV, spectral signature) are unaffected and fully valid. Update `data/EVO/Archive/ArchivedDataEVO.csv` with the run's gain to populate the gain panels.\n:::\n\n",
+  "::: {.callout-warning appearance='simple'}\nNo daily-QC gain found in the archive for **%s** — these run(s) are shown blank on every gain-normalised panel (relative Q, MFI/gain, and the executive overview's Q & MFI rows) rather than mixed onto a raw-MFI scale. Their other metrics (2+2SD, B, MEF-unit values, linearity, %%CV) are unaffected and fully valid. Update `data/EVO/Archive/ArchivedDataEVO.csv` with the run's gain to populate the gain panels.\n:::\n\n",
   paste(runs_no_gain, collapse = ", ")))
 ```
 
