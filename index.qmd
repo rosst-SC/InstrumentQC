@@ -12,6 +12,7 @@ library(purrr)
 library(stringr)
 library(plotly)
 library(Luciernaga)
+library(lubridate)
 
 Computer <- getwd()
 MainFolder <- file.path(Computer, "data")
@@ -22,96 +23,39 @@ TheList <- c("3L", "5L")
 ```
 
 ```{r}
-Gain_3L <- Luciernaga:::CurrentData(x="3L", MainFolder=MainFolder, type = "Gain")
-Gain_5L <- Luciernaga:::CurrentData(x="5L", MainFolder=MainFolder, type = "Gain")
-```
+# Home-page Pass / Caution / Fail rules: gain within 2 / 3 SD of a 1-month
+# trailing band and %rCV < 5% / <= 6%, over every detector. See
+# pages/_home_status.R.
+source("pages/_home_status.R")
 
-```{r}
-#| eval: false
-WindowOfInterest <- Sys.time() - months(24)
-
-Gain_3L <- Gain_3L |> filter(DateTime >= WindowOfInterest)
-Gain_5L <- Gain_5L |> filter(DateTime >= WindowOfInterest)
-```
-
-```{r}
-# QC indicator detectors (per the Help page): FSC, SSC, and the "3" detectors
-# (UV3/V3/B3/YG3/R3). The Gain archive names these without the "-A" area suffix,
-# so we select them explicitly rather than relying on the default detectorType.
-IndicatorDetectors <- "^FSC$|^SSC|V3$|B3$|R3$|YG3$"
-
-The3L <- Luciernaga:::VisualQCSummary(x=Gain_3L, detectorType=IndicatorDetectors)
-The5L <- Luciernaga:::VisualQCSummary(x=Gain_5L, detectorType=IndicatorDetectors)
-
-Table3L <- Luciernaga:::SmallTable(data=The3L)
-Table5L <- Luciernaga:::SmallTable(data=The5L)
-
-# Cytek Aurora EVO (third instrument). Its processed Archive data may not be
-# present yet (SpectroFlo 4.x parsing is pending), so build its table only when
-# the Gain archive exists; otherwise leave it NULL for a placeholder.
-EVOGainFile <- list.files(file.path(MainFolder, "EVO", "Archive"),
-                          pattern = "Archived", full.names = TRUE)
-HasEVO <- length(EVOGainFile) == 1 && nrow(read.csv(EVOGainFile[1], nrow = 1)) > 0
-if (HasEVO) {
-  Gain_EVO <- Luciernaga:::CurrentData(x="EVO", MainFolder=MainFolder, type = "Gain")
-  TheEVO <- Luciernaga:::VisualQCSummary(x=Gain_EVO, detectorType=IndicatorDetectors)
-  TableEVO <- Luciernaga:::SmallTable(data=TheEVO)
-} else {
-  TableEVO <- NULL
+ArchiveHasRows <- function(inst) {
+  f <- list.files(file.path(MainFolder, inst, "Archive"), pattern = "Archived",
+                  full.names = TRUE)
+  length(f) == 1 && nrow(read.csv(f[1], nrows = 1)) > 0
 }
-```
+Instruments <- Filter(ArchiveHasRows, c("3L", "5L", "EVO"))
 
-```{r}
-#| include: false
-#| echo: false
+Scores    <- setNames(lapply(Instruments, home_qc_scores, MainFolder = MainFolder),
+                      Instruments)
+RunStatus <- lapply(Scores, home_run_status)
+Tables    <- lapply(Scores, function(s) home_small_table(home_latest_table(s)))
 
-Computer <- getwd()
-MainFolder <- file.path(Computer, "data")
-TheName <- "HistoricalData.csv"
-HistoricalPath <- file.path(MainFolder, TheName)
-ShinyData <- read.csv(HistoricalPath, check.names = FALSE)
-```
-
-```{r}
-x <- as.list(intersect(c("3L", "5L", "EVO"), unique(ShinyData$Instrument)))
-
-DataForPlot <- Luciernaga:::QCHistoryArchive(x=x, historydata=ShinyData, timewindow=24)
-Transposed <- t(DataForPlot)
-colnames(Transposed) <- Transposed[1,]
-Transposed <- Transposed[-1,]
-DataForPlot1 <- data.frame(Transposed, check.names=FALSE)
-DataForPlot1 <- DataForPlot1 %>% tibble::rownames_to_column(., var="Date")
-DataForPlot1$Date <- as.Date(DataForPlot1$Date) 
-Data <- DataForPlot1 |> arrange(desc(Date))
-
-Data <- Data |> relocate("3L", "5L", .after="Date")
-
-Data <- Data |> mutate(across(-Date, ~ na_if(., "Unknown")))
-
-AltData <- Data |> dplyr::filter(Date > lubridate::ymd("2023-04-10"))
-
+Data <- home_history(RunStatus)
+AltData <- Data |> dplyr::filter(Date > Sys.Date() - months(24))
 GlobalSummary <- Luciernaga:::SmallTableGlobal(AltData)
-```
 
-```{r}
 TheDate <- Data |> slice(1) |> pull(Date)
-```
 
-```{r}
-TheStatus3L <- Luciernaga:::CurrentStatus(x="3L", data=Data) %>% Luciernaga:::InstrumentText(.)
-TheColor3L <- Luciernaga:::CurrentStatus(x="3L", data=Data) %>% Luciernaga:::InstrumentColor(.)
-TheStatus5L <- Luciernaga:::CurrentStatus(x="5L", data=Data) %>% Luciernaga:::InstrumentText(.)
-TheColor5L <- Luciernaga:::CurrentStatus(x="5L", data=Data) %>% Luciernaga:::InstrumentColor(.)
-
-# Cytek Aurora EVO status: real status once it appears in HistoricalData,
-# otherwise an "Awaiting data" placeholder so the home page renders cleanly.
-if ("EVO" %in% names(Data)) {
-  TheStatusEVO <- Luciernaga:::CurrentStatus(x="EVO", data=Data) %>% Luciernaga:::InstrumentText(.)
-  TheColorEVO  <- Luciernaga:::CurrentStatus(x="EVO", data=Data) %>% Luciernaga:::InstrumentColor(.)
-} else {
-  TheStatusEVO <- "Awaiting data"
-  TheColorEVO  <- "secondary"
+InstStatus <- function(inst) {
+  if (!inst %in% Instruments)
+    return(list(text = "Awaiting data", color = "secondary"))
+  s <- RunStatus[[inst]]$QCStatus[1]
+  list(text  = dplyr::coalesce(Luciernaga:::InstrumentText(s), "Unscored"),
+       color = dplyr::coalesce(Luciernaga:::InstrumentColor(s), "secondary"))
 }
+S3L <- InstStatus("3L"); S5L <- InstStatus("5L"); SEVO <- InstStatus("EVO")
+TableOr <- function(inst)
+  if (inst %in% Instruments) Tables[[inst]] else htmltools::HTML("<em>Awaiting first QC data</em>")
 ```
 
 ## {.sidebar}
@@ -119,11 +63,13 @@ Dashboard data last updated on **`r TheDate`**
 
 **Definitions:**
 
-**Pass:** All gains within 100% baseline and all RCVs <6% for all detectors.
+Status is scored on every detector for the most recent daily QC run. Each detector's gain is compared with the mean ± SD of its own runs over the previous month.
 
-**Caution:** All gains within 100% baseline, but at least one detector had a RCV above the >6% cutoff. Instrument remains usable but resolution for fluorophores on the failed detector may decrease. 
+**Pass:** All gains within 2 SD of the 1-month trailing band and all %rCVs below 5%.
 
-**Fail:** Either a gain exceeded 100% baseline, or RCVs exceeded >6% for at least one indicator detector. Significant variation and batch effects may occcur. 
+**Caution:** All gains within 3 SD of the 1-month trailing band and all %rCVs at or below 6%, but at least one detector outside the Pass limits. The instrument remains usable, but resolution for fluorophores on the flagged detector may decrease.
+
+**Fail:** Any gain more than 3 SD from the 1-month trailing band, or any %rCV above 6%. Significant variation and batch effects may occur.
 
 For additional information, navigate to the [Help](pages/help.qmd) page.
 
@@ -146,8 +92,8 @@ This dashboard was created with [Quarto](https://quarto.org/), based on work by 
 #| title: "3L"
 #| icon: cup-hot
 
-list(value = paste0("QC Status: ", TheStatus3L),
-     color = TheColor3L)
+list(value = paste0("QC Status: ", S3L$text),
+     color = S3L$color)
 
 ```
 
@@ -163,8 +109,8 @@ list(value = paste0("QC Status: ", TheStatus3L),
 #| title: "5L"
 #| icon: cup-hot
 
-list(value = paste0("QC Status: ", TheStatus5L),
-     color = TheColor5L)
+list(value = paste0("QC Status: ", S5L$text),
+     color = S5L$color)
 ```
 
 #### Column {scrolling=FALSE}
@@ -178,8 +124,8 @@ list(value = paste0("QC Status: ", TheStatus5L),
 #| title: "EVO"
 #| icon: cup-hot
 
-list(value = paste0("QC Status: ", TheStatusEVO),
-     color = TheColorEVO)
+list(value = paste0("QC Status: ", SEVO$text),
+     color = SEVO$color)
 ```
 
 #### Column
@@ -187,19 +133,19 @@ list(value = paste0("QC Status: ", TheStatusEVO),
 ## Second {.tabset}
 ```{r}
 #| title: 3L
-Table3L
+TableOr("3L")
 ```
 
 
 ```{r}
 #| title: 5L
-Table5L
+TableOr("5L")
 ```
 
 
 ```{r}
 #| title: EVO
-if (!is.null(TableEVO)) TableEVO else htmltools::HTML("<em>Awaiting first QC data</em>")
+TableOr("EVO")
 ```
 
 
