@@ -186,33 +186,6 @@ gp(ggplot(cl_lat, aes(run_label, cvt, colour = laser, group = laser)) +
      theme(axis.text.x = element_text(angle = 30, hjust = 1)), 320)
 ```
 
-## Brightest peak (peak 6) %CV
-
-A focused per-detector view of peak 6 (the brightest fluorescent level) alone over
-time. The brightest population is normally the tightest (~1–2%), so any rise is a
-sensitive indicator of saturation, noise, or linearity issues at the top of the
-dynamic range. The cross-detector snapshot and per-laser mean are under
-**%CV & noise floor**.
-
-::: {.callout-note collapse="true"}
-### Peak-6 %CV trend per detector (expand — one panel per detector)
-
-```{r}
-#| label: peak6-cv-trend
-#| fig-height: 22
-#| fig-width: 18
-peak6 <- pm |> filter(peak == n_peaks, in_range)
-ggplot(peak6, aes(run_label, rcv, group = detector)) +
-  geom_line(colour = "grey60") + geom_point(size = 1, colour = "firebrick") +
-  facet_wrap(~ detector, scales = "free_y", ncol = 6) +
-  cv_y_scale +
-  labs(title = "Peak-6 robust %%CV over time (brightest URCP-38-2K level)",
-       x = NULL, y = "Peak-6 %%CV") +
-  theme_bw(base_size = 8) +
-  theme(strip.text = element_text(size = 7), axis.text.x = element_text(size = 5, angle = 45, hjust = 1))
-```
-:::
-
 ## Per-run diagnostics
 
 :::: {.callout-note collapse="true" title="Per-run diagnostics — bead gate images (click to expand)"}
