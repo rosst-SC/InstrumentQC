@@ -111,20 +111,68 @@ MedAll <- lapply(setNames(laser_levels, laser_levels),
                  function(L) MedAllPlots[laser_of(names(MedAllPlots)) == L])
 
 all_render <- function(plotlist) htmltools::tagList(lapply(plotlist, ggplotly))
+
+# ---- Per-run x detector metrics (linearity, 2+2SD) --------------------------
+# The loader's metric tables are keyed on run_label; map back to the acquisition
+# timestamp so the x axis matches the peak plots.
+run_dt <- pm |> distinct(run_label, DateTime = datetime)
+
+# Generic builder: df with detector, run_label, value (+ optional label column
+# used as the plot title / value-column name). Returns a list of per-detector
+# plots in detector_channels order. No flags: invalid fits are already NA.
+metric_plots <- function(df, ylab) {
+  df <- df |> mutate(detector = as.character(detector)) |>
+    inner_join(run_dt, by = "run_label") |>
+    filter(is.finite(value))
+  if (!"label" %in% names(df)) df$label <- df$detector
+  dets <- intersect(detector_channels, unique(df$detector))
+  lapply(setNames(dets, dets), function(k) {
+    d <- df[df$detector == k, , drop = FALSE]
+    lj_det_plot(data.frame(DateTime = d$DateTime, value = d$value, flag = FALSE),
+                d$label[1], ylab)
+  })
+}
+by_laser <- function(plots) lapply(setNames(laser_levels, laser_levels),
+                                   function(L) plots[laser_of(names(plots)) == L])
+
+# Linearity: R^2 of log10(median) vs peak rank on peaks 2-6 (all 64 detectors).
+LinR2 <- by_laser(metric_plots(lin |> transmute(run_label, detector, value = r2),
+                               "Linearity R² (log MFI vs peak)"))
+# 2+2SD limit of resolution in MFI (Parks 2018; all 64 detectors). Lower = more sensitive.
+Lor <- by_laser(metric_plots(qb |> transmute(run_label, detector, value = lor_mfi),
+                             "2+2SD (MFI)"))
+
+# MEF-certificate detectors (18): log-log slope (ideal 1) and 2+2SD in MEF units.
+# Titles carry the fluorophore and whether the MEF scale passes the slope check
+# (0.9-1.1, R^2 > 0.98) in most runs; failing detectors' MEF values are lower-confidence.
+if (has_mef) {
+  mef_lab <- qb_mef |> group_by(detector, fluor) |>
+    summarise(ok = mean(mef_ok, na.rm = TRUE) >= 0.5, .groups = "drop") |>
+    mutate(label = paste0(detector, " · ", fluor, ifelse(ok, "", " (MEF scale mismatch)")))
+  mef_df <- qb_mef |> left_join(mef_lab |> select(detector, label), by = "detector")
+  MefSlope <- metric_plots(mef_df |> transmute(run_label, detector, label, value = ll_slope),
+                           "MEF log-log slope (ideal 1)")
+  MefLor   <- metric_plots(mef_df |> transmute(run_label, detector, label, value = lor),
+                           "2+2SD (MEF)")
+}
 ```
 
-## {.sidebar}
+# {.sidebar}
 Levey-Jennings tracking of **URCP-38-2K 6-peak Ultra Rainbow** beads on the **Cytek Aurora EVO**. Last run: **`r TheDate`** (`r n_runs` runs).
 
 **Median column:** the **Peak 6** tabs show the median of the brightest population for each detector, one tab per laser. The **All peaks** tabs show all six population medians together (peak 1 = blank) on a log axis, with no control bands.
 
 **rCV column:** robust %CV of **Peak 6** (brightest) and **Peak 1** (blank). The blank median sits close to zero, so its %rCV is volatile even when the absolute spread is stable. The noise-floor SD on the [main 6-peak page](AuroraEVO_6PeakUltra.qmd) is the more robust blank measure.
 
-**Control bands:** each Peak 6 / Peak 1 plot has a centre line at the detector's robust median over the full history. Green is within ±2 SD, amber is 2–3 SD, and the red dashed lines are at ±3 SD, where SD is the MAD-scaled SD. Bands need at least 8 unflagged runs.
+**Linearity & 2+2SD page.** **Linearity** shows R² of log₁₀(median) against peak number over peaks 2–6 for each detector (1 = perfectly log-linear). The **MEF** tab shows the log-log slope of median against the certificate MEF values for the 18 certificate detectors (ideal 1, acceptable 0.9–1.1). **2+2SD** is the Parks 2018 limit of resolution in MFI for all 64 detectors, where lower means more sensitive. Its **MEF** tab shows the same limit in MEF units. Detectors marked *MEF scale mismatch* fail the slope check, so their MEF values are lower-confidence. Runs whose fit failed have no 2+2SD value and are not plotted.
+
+**Control bands:** each LJ plot (everything except All peaks) has a centre line at the detector's robust median over the full history. Green is within ±2 SD, amber is 2–3 SD, and the red dashed lines are at ±3 SD, where SD is the MAD-scaled SD. Bands need at least 8 unflagged runs.
 
 **Red squares** mark runs where that peak was saturated or out of range. They're plotted but left out of the band baseline. Dotted blue verticals are engineer visits.
 
 Note: daily QC pins bead MFI by adjusting gain, so the medians are held roughly constant by design. Sustained shifts point to a QC-target or gain issue, not directly to detector health. See the [Help](help.qmd) page for more.
+
+# Median & rCV
 
 ## Median {.tabset}
 
@@ -228,4 +276,70 @@ lj_render(CvP1$YG, clamp0 = TRUE)
 ```{r}
 #| title: "R · Peak 1"
 lj_render(CvP1$R, clamp0 = TRUE)
+```
+
+# Linearity & 2+2SD
+
+## Linearity {.tabset}
+
+```{r}
+#| title: "UV · R²"
+lj_render(LinR2$UV)
+```
+
+```{r}
+#| title: "V · R²"
+lj_render(LinR2$V)
+```
+
+```{r}
+#| title: "B · R²"
+lj_render(LinR2$B)
+```
+
+```{r}
+#| title: "YG · R²"
+lj_render(LinR2$YG)
+```
+
+```{r}
+#| title: "R · R²"
+lj_render(LinR2$R)
+```
+
+```{r}
+#| title: "MEF · slope"
+if (has_mef) lj_render(MefSlope) else cat("No MEF certificate file found.")
+```
+
+## 2+2SD {.tabset}
+
+```{r}
+#| title: "UV · 2+2SD"
+lj_render(Lor$UV, clamp0 = TRUE)
+```
+
+```{r}
+#| title: "V · 2+2SD"
+lj_render(Lor$V, clamp0 = TRUE)
+```
+
+```{r}
+#| title: "B · 2+2SD"
+lj_render(Lor$B, clamp0 = TRUE)
+```
+
+```{r}
+#| title: "YG · 2+2SD"
+lj_render(Lor$YG, clamp0 = TRUE)
+```
+
+```{r}
+#| title: "R · 2+2SD"
+lj_render(Lor$R, clamp0 = TRUE)
+```
+
+```{r}
+#| title: "MEF · 2+2SD"
+if (has_mef) lj_render(MefLor, clamp0 = TRUE) else cat("No MEF certificate file found.")
 ```
