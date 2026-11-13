@@ -1,0 +1,231 @@
+---
+title: "6 Peak Ultra — Aurora EVO · Levey-Jennings"
+format:
+  dashboard:
+    orientation: columns
+    scrolling: true
+---
+```{r}
+#| include: false
+HasData <- file.exists("6peak Ultra_tracking_spectral/peak_metrics.csv")
+```
+
+```{r}
+#| eval: !expr '!HasData'
+#| content: valuebox
+#| title: "6 Peak Ultra — Aurora EVO"
+#| icon: hourglass-split
+#| color: secondary
+list(value = "Awaiting first 6-peak data")
+```
+
+```{r}
+#| include: false
+if (!HasData) knitr::knit_exit()
+```
+
+```{r}
+#| include: false
+# Shared 6-peak loader: pm (run x detector x peak archive), n_peaks, laser_of(),
+# laser_levels, detector_channels. Loads ggcyto/plotly and dplyr last.
+source("pages/_6peak_load.R")
+# Shared Levey-Jennings helpers (add_lj_bands / lj_render): fixed robust band,
+# median +/- MAD-scaled SD over the whole history, flagged points excluded.
+source("pages/_lj_helpers.R")
+
+TheDate <- format(max(pm$datetime, na.rm = TRUE), "%Y-%m-%d %H:%M")
+
+# Engineer visits (verticals), same source/filter as the daily-QC EVO page.
+Maint <- read.csv("data/reference/AuroraMaintenance.csv", check.names = FALSE)
+Maint <- Maint[Maint$instrument %in% "EVO" & !grepl("lean", Maint$reason), , drop = FALSE]
+VisitTimes <- as.POSIXct(lubridate::mdy(Maint$date), tz = "UTC")
+
+visit_layer <- function() {
+  if (length(VisitTimes) == 0) return(NULL)
+  geom_vline(xintercept = as.numeric(VisitTimes), colour = "steelblue",
+             linetype = "dotted", linewidth = 0.5)
+}
+
+# One detector's LJ trend plot, shaped the way _lj_helpers.R expects:
+# p$data has DateTime, a value column named exactly p$labels$title (the detector),
+# and a "Flag-<detector>" logical column (flagged points are excluded from the
+# band baseline and drawn as red squares).
+lj_det_plot <- function(d, det, ylab) {
+  d <- d[order(d$DateTime), , drop = FALSE]
+  names(d)[names(d) == "value"] <- det
+  names(d)[names(d) == "flag"]  <- paste0("Flag-", det)
+  fl <- d[d[[paste0("Flag-", det)]] %in% TRUE, , drop = FALSE]
+  ggplot(d, aes(x = DateTime, y = .data[[det]])) +
+    visit_layer() +
+    geom_line(colour = "grey50") +
+    geom_point(colour = "black", size = 1.5) +
+    geom_point(data = fl, colour = "red", shape = 15, size = 2.5) +
+    labs(title = det, x = NULL, y = ylab) +
+    theme_bw()
+}
+
+# Per-laser named list of per-detector plots for one peak + metric.
+# Flag = saturated or outside the instrument range. `resolved` (separation from the
+# neighbouring peak in that detector) is deliberately NOT a flag: population labels
+# come from the anchor-detector clustering, so an overlapping blank/peak in a dim
+# detector is still a valid measurement of that population (~1/3 of blank points
+# are "unresolved" in dim UV/V/B detectors).
+build_set <- function(peak_n, metric, ylab) {
+  d <- pm |>
+    filter(peak == peak_n, is.finite(.data[[metric]])) |>
+    transmute(detector = as.character(detector), DateTime = datetime,
+              value = .data[[metric]],
+              flag = !in_range | saturated)
+  dets <- intersect(detector_channels, unique(d$detector))
+  plots <- lapply(setNames(dets, dets), function(k)
+    lj_det_plot(d[d$detector == k, c("DateTime", "value", "flag")], k, ylab))
+  lapply(setNames(laser_levels, laser_levels),
+         function(L) plots[laser_of(names(plots)) == L])
+}
+
+MedP6 <- build_set(n_peaks, "median", "Peak 6 median")
+CvP6  <- build_set(n_peaks, "rcv",    "Peak 6 %rCV")
+CvP1  <- build_set(1,       "rcv",    "Peak 1 (blank) %rCV")
+
+# All 6 peaks' medians on one log-y plot per detector (no bands). Resolved,
+# in-range peaks only; non-positive medians can't sit on a log axis.
+peak_cols <- c("1" = "grey40", "2" = "#1f77b4", "3" = "#2ca02c",
+               "4" = "#ff7f0e", "5" = "#9467bd", "6" = "#d62728")
+all_d <- pm |>
+  filter(resolved, in_range, is.finite(median), median > 0) |>
+  transmute(detector = as.character(detector), DateTime = datetime,
+            Median = median, Peak = factor(peak, levels = 1:n_peaks))
+all_plot <- function(det) {
+  d <- all_d[all_d$detector == det, , drop = FALSE]
+  ggplot(d, aes(DateTime, Median, colour = Peak, group = Peak)) +
+    visit_layer() +
+    geom_line() + geom_point(size = 1.3) +
+    scale_y_log10() +
+    scale_colour_manual(values = peak_cols, drop = FALSE) +
+    labs(title = det, x = NULL, y = "Median (log10)") +
+    theme_bw()
+}
+all_dets <- intersect(detector_channels, unique(all_d$detector))
+MedAllPlots <- lapply(setNames(all_dets, all_dets), all_plot)
+MedAll <- lapply(setNames(laser_levels, laser_levels),
+                 function(L) MedAllPlots[laser_of(names(MedAllPlots)) == L])
+
+all_render <- function(plotlist) htmltools::tagList(lapply(plotlist, ggplotly))
+```
+
+## {.sidebar}
+Levey-Jennings tracking of **URCP-38-2K 6-peak Ultra Rainbow** beads on the **Cytek Aurora EVO**. Last run: **`r TheDate`** (`r n_runs` runs).
+
+**Median column:** the **Peak 6** tabs show the median of the brightest population for each detector, one tab per laser. The **All peaks** tabs show all six population medians together (peak 1 = blank) on a log axis, with no control bands.
+
+**rCV column:** robust %CV of **Peak 6** (brightest) and **Peak 1** (blank). The blank median sits close to zero, so its %rCV is volatile even when the absolute spread is stable. The noise-floor SD on the [main 6-peak page](AuroraEVO_6PeakUltra.qmd) is the more robust blank measure.
+
+**Control bands:** each Peak 6 / Peak 1 plot has a centre line at the detector's robust median over the full history. Green is within ±2 SD, amber is 2–3 SD, and the red dashed lines are at ±3 SD, where SD is the MAD-scaled SD. Bands need at least 8 unflagged runs.
+
+**Red squares** mark runs where that peak was saturated or out of range. They're plotted but left out of the band baseline. Dotted blue verticals are engineer visits.
+
+Note: daily QC pins bead MFI by adjusting gain, so the medians are held roughly constant by design. Sustained shifts point to a QC-target or gain issue, not directly to detector health. See the [Help](help.qmd) page for more.
+
+## Median {.tabset}
+
+```{r}
+#| title: "UV · Peak 6"
+lj_render(MedP6$UV)
+```
+
+```{r}
+#| title: "V · Peak 6"
+lj_render(MedP6$V)
+```
+
+```{r}
+#| title: "B · Peak 6"
+lj_render(MedP6$B)
+```
+
+```{r}
+#| title: "YG · Peak 6"
+lj_render(MedP6$YG)
+```
+
+```{r}
+#| title: "R · Peak 6"
+lj_render(MedP6$R)
+```
+
+```{r}
+#| title: "UV · All peaks"
+all_render(MedAll$UV)
+```
+
+```{r}
+#| title: "V · All peaks"
+all_render(MedAll$V)
+```
+
+```{r}
+#| title: "B · All peaks"
+all_render(MedAll$B)
+```
+
+```{r}
+#| title: "YG · All peaks"
+all_render(MedAll$YG)
+```
+
+```{r}
+#| title: "R · All peaks"
+all_render(MedAll$R)
+```
+
+## rCV {.tabset}
+
+```{r}
+#| title: "UV · Peak 6"
+lj_render(CvP6$UV, clamp0 = TRUE)
+```
+
+```{r}
+#| title: "V · Peak 6"
+lj_render(CvP6$V, clamp0 = TRUE)
+```
+
+```{r}
+#| title: "B · Peak 6"
+lj_render(CvP6$B, clamp0 = TRUE)
+```
+
+```{r}
+#| title: "YG · Peak 6"
+lj_render(CvP6$YG, clamp0 = TRUE)
+```
+
+```{r}
+#| title: "R · Peak 6"
+lj_render(CvP6$R, clamp0 = TRUE)
+```
+
+```{r}
+#| title: "UV · Peak 1"
+lj_render(CvP1$UV, clamp0 = TRUE)
+```
+
+```{r}
+#| title: "V · Peak 1"
+lj_render(CvP1$V, clamp0 = TRUE)
+```
+
+```{r}
+#| title: "B · Peak 1"
+lj_render(CvP1$B, clamp0 = TRUE)
+```
+
+```{r}
+#| title: "YG · Peak 1"
+lj_render(CvP1$YG, clamp0 = TRUE)
+```
+
+```{r}
+#| title: "R · Peak 1"
+lj_render(CvP1$R, clamp0 = TRUE)
+```

@@ -9,18 +9,18 @@ is a separate, deliberately non-render-time step (see Architecture below).
 
 ```
 _quarto.yml  styles.scss  index.qmd  404.qmd  Flag.csv     (root)
-pages/       Aurora3L/5L/EVO.qmd, *_8Peak.qmd, AuroraEVO_6PeakUltra.qmd,
+pages/       Aurora3L/5L/EVO.qmd, AuroraEVO_6PeakUltra*.qmd,
              CytekQCBead.qmd, help.qmd, _lj_helpers.R (shared LJ/Westgard helpers)
 scripts/     TheScript_3L/5L/EVO.R (instrument-PC cron wrappers), EVO_4xParser.R,
-             Process8Peak.R, Process6PeakUltra.R, TheScript_DashboardRender.R
+             Process6PeakUltra.R, TheScript_DashboardRender.R
 data/        3L/5L/EVO Archive dirs, HistoricalData.csv, reference/
-             (QCBeadLot*.csv, AuroraMaintenance.csv, RCP-30-5A_AS01_MEF.csv,
-             URCP-38-2K_MEF.csv)
-images/      SydneyCytometry.jpg, 8peak_evo/, 6peak_ultra_evo/ (per-run diagnostic PNGs)
+             (QCBeadLot*.csv, AuroraMaintenance.csv, URCP-38-2K_MEF.csv)
+images/      SydneyCytometry.jpg, 6peak_ultra_evo/ (per-run diagnostic PNGs)
 docs/        rendered site — GitHub Pages serves /docs directly (no CI build step;
              rendered HTML is committed alongside source)
-_attic/      archived unused leftovers — render ignores it
-8peak_tracking_spectral/       8-peak sub-project — OWN git repo, gitignored here
+_attic/      archived unused leftovers — render ignores it. Includes
+             8peak_2026-11-13/ (retired 8-peak pages, script, PNGs, MEF csv and
+             the nested 8peak_tracking_spectral/ repo; see its README)
 6peak Ultra_tracking_spectral/ 6-peak sub-project — same pattern
 ```
 
@@ -61,18 +61,15 @@ Processing is split from display so renders stay reproducible:
 - **`DailyQCParse` has no dedup** — appends via `bind_rows`; re-running it on
   already-archived days duplicates rows. `QCBeadParse` dedups by `DATE`+`TIME`
   and is safe to re-run, but also `file.remove`s the source `.fcs`.
-- **8-peak bead tracking** (`RCP-30-5A` lot): `scripts/Process8Peak.R` does the
-  heavy FCS work once (flowClust clustering of 8 populations) → writes
-  `8peak_tracking_spectral/peak_metrics.csv` + per-run `images/8peak_evo/`
-  gate/cluster PNGs. Incremental — only processes new dates / missing images.
-  `pages/AuroraEVO_8Peak.qmd` is display-only (reads the archive + PNGs, no
-  flowClust). Load `dplyr` **last** in these pages — `ggcyto`/`flowCore` mask
-  `filter`.
-- **6-peak Ultra Rainbow tracking** (`URCP-38-2K` lot): mirrors the 8-peak
-  layout exactly. `scripts/Process6PeakUltra.R` writes
-  `6peak Ultra_tracking_spectral/peak_metrics.csv` + `images/6peak_ultra_evo/`
-  PNGs, keyed on acquisition **datetime** (not date — multiple runs/day happen).
-  `pages/AuroraEVO_6PeakUltra.qmd` is the display-only dashboard.
+- **8-peak bead tracking** (`RCP-30-5A`) was retired on 2026-11-13 and archived to
+  `_attic/8peak_2026-11-13/`.
+- **6-peak Ultra Rainbow tracking** (`URCP-38-2K` lot) is the live bead tracker.
+  `scripts/Process6PeakUltra.R` does the heavy FCS work once (flowClust) and
+  writes `6peak Ultra_tracking_spectral/peak_metrics.csv` +
+  `images/6peak_ultra_evo/` PNGs, keyed on acquisition **datetime** (not date —
+  multiple runs/day happen). It is incremental. `pages/AuroraEVO_6PeakUltra*.qmd`
+  are display-only. Load `dplyr` **last** in these pages — `ggcyto`/`flowCore`
+  mask `filter`.
 
 ## Gotchas
 
@@ -103,15 +100,16 @@ Processing is split from display so renders stay reproducible:
   `## column {.tabset}` markdown. The home page guards similarly and builds its
   instrument list via `intersect(c("3L","5L","EVO"), unique(ShinyData$Instrument))`
   so a new instrument auto-joins once its Archive has rows.
-- **Nested git repos:** `8peak_tracking_spectral/` and
-  `6peak Ultra_tracking_spectral/` are their own git repos and gitignored here —
+- **Nested git repos:** `6peak Ultra_tracking_spectral/` (and the archived
+  `_attic/8peak_2026-11-13/8peak_tracking_spectral/`) are their own git repos
+  and gitignored here —
   their FCS/metrics CSVs aren't in this repo, only the rendered page + diagnostic
   PNGs under `images/`.
 - Raw `.fcs` and `DailyQCReport_*.CSV` are gitignored.
 
 ## Q/B sensitivity model
 
-Two methods coexist (since 2026-11-11):
+Two methods exist; only the 6-peak one is live (8-peak retired 2026-11-13):
 
 - **EVO 6-peak Ultra (current method)**: `pages/_qb_parks.R`, sourced by the shared
   loader `pages/_6peak_load.R`. That loader is used by both `AuroraEVO_6PeakUltra.qmd`
@@ -127,8 +125,8 @@ Two methods coexist (since 2026-11-11):
     from `Process6PeakUltra.R`. Never use `rcv × median`.
   - Read `Sensitivity Articles/QB_2plus2SD_method_summary.md` first.
   - The previous version is archived in `_attic/6peak_ultra_v1_2026-11-11/`.
-- **EVO 8-peak (old method)**: `qb_fit()` (CV² vs 1/MFI, brightest-CV subtraction)
-  plus the STN-17 closed form, documented in
+- **EVO 8-peak (old method, archived in `_attic/8peak_2026-11-13/`)**: `qb_fit()`
+  (CV² vs 1/MFI, brightest-CV subtraction) plus the STN-17 closed form, documented in
   `Sensitivity Articles/QB_sensitivity_reference.md`. The method summary lists why
   these were superseded. To port it, reuse `_qb_parks.R`; the 8-peak archive needs
   the same `sd`/`saturated` columns first.

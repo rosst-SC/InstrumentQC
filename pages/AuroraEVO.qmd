@@ -166,9 +166,11 @@ Dashboard data for the **Cytek Aurora EVO** last updated on **`r TheDate`**
 **First Column: Gain** Gain (Voltage) values set for instrument after QC. Changes over time reflective of laser health.
 **Second Column: rCV** Percentage Robust Coefficient of Variation (rCV) after QC. Higher values reflect decreased resolution between positive and negative for that detector.
 
-**Control bands:** each plot shows the robust centerline (median) with green (within ±2 SD) and amber (±2–3 SD) zones and red dashed action limits (±3 SD), computed from each detector's own history (robust SD = MAD; QC-fail points excluded from the baseline).
+**Control bands:** each plot shows a centerline with green (within ±2 SD) and amber (±2–3 SD) zones and red dashed action limits (±3 SD). On **Gain** plots the band is **1-month trailing**: each run is compared with the mean ± SD of the same detector's runs over the previous 30 days (the run itself excluded; at least 8 prior runs needed), so the band follows legitimate gain drift as detectors age. This is the same rule the home page uses for Pass / Caution / Fail. On **%rCV** plots the band is the robust centerline (median ± MAD-scaled SD) over the detector's whole history, with QC-fail points excluded from the baseline.
 
-**Westgard flags (Gain only):** hollow circles mark rule violations — red = 1₃s (>3 SD) or 2₂s (2 consecutive >2 SD, a step); amber = 1₂s (>2 SD warning). These use a **rolling ~45-day local baseline** (with a practical-significance floor), so they flag breaks from how the instrument runs *now*, independent of long-term aging — different from the full-window bands. Hover a marker for the rule; see the **Violations** tab for the list. The drift-counting rules (10x, 4₁s) are intentionally omitted because gain legitimately drifts as detectors age.
+**Westgard flags (Gain only):** hollow circles mark rule violations against the 1-month trailing band: red = 1₃s (>3 SD, reject); amber = 1₂s (>2 SD, warning). Hover a marker for the rule; see the **Violations** tab for the list. The drift-counting rules (10x, 4₁s) are intentionally omitted because gain legitimately drifts as detectors age.
+
+**Laser scaling:** the area scaling factors should stay consistent, so instead of SD bands they are held to a fixed **±0.5** tolerance around each factor's long-run median (green zone, red dashed limits). A run outside it is circled red: the laser may be suspect or the telescope damaged.
 
 For additional information concerning individual parameter tabs, navigate to the [Help](help.qmd) page.
 
@@ -222,22 +224,23 @@ lj_render_wg(LaserDelayPlotsGain)
 
 ```{r}
 #| title: LaserScaling
-lj_render_wg(ScalingPlotsGain)
+lj_render_scaling(ScalingPlotsGain)
 ```
 
 ```{r}
 #| title: "Violations"
 WGtab <- westgard_summary(c(UltraVioletPlotsGain, VioletPlotsGain, BluePlotsGain,
   YellowGreenPlotsGain, RedPlotsGain, ScatterPlotsGain, LaserPowerPlotsGain,
-  LaserDelayPlotsGain, ScalingPlotsGain))
+  LaserDelayPlotsGain),
+  scaling = ScalingPlotsGain)
 if (nrow(WGtab) == 0) {
   cat("No Westgard violations in the current window.")
 } else {
   knitr::kable(WGtab, row.names = FALSE,
     caption = paste("Westgard violations on Gain (most recent first).",
-      "Rolling ~45-day local baseline; 1_3s = >3 SD (reject), 1_2s = >2 SD (warn),",
-      "2_2s = 2 consecutive >2 SD same side (reject).",
-      "Detectors with <8 recent points are unscored."))
+      "1-month trailing baseline; 1_3s = >3 SD (reject), 1_2s = >2 SD (warn);",
+      "laser scaling: drift>0.5 = more than 0.5 from that factor's median (reject).",
+      "Runs with <8 runs in the prior month are unscored."))
 }
 ```
 
@@ -285,5 +288,5 @@ lj_render(LaserDelayPlotsGain)
 
 ```{r}
 #| title: LaserScaling
-lj_render(ScalingPlotsGain)
+lj_render_scaling(ScalingPlotsGain)
 ```

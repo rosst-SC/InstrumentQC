@@ -523,9 +523,8 @@ gp(heat(lin, "r2", "Linearity R² (log MFI vs peak rank)", "1 = perfectly log-li
 
 ### Gain context
 
-The daily-QC **gain** applied on each run (rising = APD/laser aging) and
-**MFI/gain** (gain-removed bead intensity; should be flat if the bead + optics are
-stable).
+**MFI/gain**: peak-6 bead intensity with the daily-QC gain divided out. It should be
+flat if the bead and optics are stable.
 
 ```{r}
 #| label: gain-missing-note
@@ -533,13 +532,6 @@ stable).
 if (length(runs_no_gain)) cat(sprintf(
   "::: {.callout-warning appearance='simple'}\nNo daily-QC gain found in the archive for **%s** — these run(s) are shown blank on every gain-normalised panel (relative Q, MFI/gain, and the executive overview's Q & MFI rows) rather than mixed onto a raw-MFI scale. Their other metrics (2+2SD, B, MEF-unit values, linearity, %%CV) are unaffected and fully valid. Update `data/EVO/Archive/ArchivedDataEVO.csv` with the run's gain to populate the gain panels.\n:::\n\n",
   paste(runs_no_gain, collapse = ", ")))
-```
-
-```{r}
-#| label: gain-heat
-#| eval: !expr has_gain
-gtab <- pm |> filter(peak == n_peaks) |> distinct(run_label, detector, gain)
-gp(heat(gtab, "gain", "Applied gain (peak-6 row)", "from daily QC"))
 ```
 
 ::: {layout-ncol=2}

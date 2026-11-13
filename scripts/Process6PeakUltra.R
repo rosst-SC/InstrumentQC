@@ -7,7 +7,7 @@
 #   2. SAVES two per-run diagnostic images (bead gate + 2D cluster assignment)
 #      to images/6peak_ultra_evo/ so the website page can show them without FCS.
 #
-# Mirrors scripts/Process8Peak.R, with the URCP-specific differences baked into
+# Mirrors the (archived) _attic/8peak_2026-11-13/scripts/Process8Peak.R, with the URCP-specific differences baked into
 # the cfg block:
 #   * n_peaks = 6 (blank particles = peak 1; 5 fluorescent levels = peaks 2-6).
 #     The two dimmest events are ONE population (the blank); at K=7 flowClust

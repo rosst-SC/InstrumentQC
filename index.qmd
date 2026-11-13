@@ -24,7 +24,7 @@ TheList <- c("3L", "5L")
 
 ```{r}
 # Home-page Pass / Caution / Fail rules: gain within 2 / 3 SD of a 1-month
-# trailing band and %rCV < 5% / <= 6%, over every detector. See
+# trailing band, and %rCV pass/fail at 6%, over every detector. See
 # pages/_home_status.R.
 source("pages/_home_status.R")
 
@@ -39,6 +39,9 @@ Scores    <- setNames(lapply(Instruments, home_qc_scores, MainFolder = MainFolde
                       Instruments)
 RunStatus <- lapply(Scores, home_run_status)
 Tables    <- lapply(Scores, function(s) home_small_table(home_latest_table(s)))
+Triggers  <- dplyr::bind_rows(Map(home_triggers, Scores, names(Scores))) |>
+  dplyr::filter(Date > Sys.Date() - months(24))
+TriggerTable <- home_trigger_table(Triggers)
 
 Data <- home_history(RunStatus)
 AltData <- Data |> dplyr::filter(Date > Sys.Date() - months(24))
@@ -58,6 +61,8 @@ TableOr <- function(inst)
   if (inst %in% Instruments) Tables[[inst]] else htmltools::HTML("<em>Awaiting first QC data</em>")
 ```
 
+# Status
+
 ## {.sidebar}
 Dashboard data last updated on **`r TheDate`**
 
@@ -65,11 +70,13 @@ Dashboard data last updated on **`r TheDate`**
 
 Status is scored on every detector for the most recent daily QC run. Each detector's gain is compared with the mean ± SD of its own runs over the previous month.
 
-**Pass:** All gains within 2 SD of the 1-month trailing band and all %rCVs below 5%.
+**Pass:** All gains within 2 SD of the 1-month trailing band and all %rCVs at or below 6%.
 
-**Caution:** All gains within 3 SD of the 1-month trailing band and all %rCVs at or below 6%, but at least one detector outside the Pass limits. The instrument remains usable, but resolution for fluorophores on the flagged detector may decrease.
+**Caution:** All gains within 3 SD of the 1-month trailing band, but at least one more than 2 SD out, and all %rCVs at or below 6%. The instrument remains usable, but resolution for fluorophores on the flagged detector may decrease.
 
 **Fail:** Any gain more than 3 SD from the 1-month trailing band, or any %rCV above 6%. Significant variation and batch effects may occur.
+
+The **Triggers** page lists every Caution or Fail run with the detectors that caused it. *Gain shift* counts how many flagged detectors moved up vs down: a shift across many detectors in the same direction may be bead degradation rather than the instrument, so cross-check it against the 6-peak MFI data.
 
 For additional information, navigate to the [Help](pages/help.qmd) page.
 
@@ -149,8 +156,17 @@ TableOr("EVO")
 ```
 
 
-## Third {.tabset}{width="40%"}
+## Third {.tabset width="40%"}
 ```{r}
 #| title: Instruments
 GlobalSummary
+```
+
+# Triggers
+
+## Column
+
+```{r}
+#| title: "Caution / Fail triggers (last 24 months)"
+TriggerTable
 ```

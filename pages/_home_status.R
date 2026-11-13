@@ -10,9 +10,11 @@
 #          runs and a non-zero SD; otherwise that detector's gain is unscored.
 #   rCV  : absolute %rCV.
 #
-#   Pass    : every |z| <= 2  and every rCV <  5%
-#   Caution : every |z| <= 3  and every rCV <= 6%  (but not Pass)
+#   Pass    : every |z| <= 2  and every rCV <= 6%
+#   Caution : every |z| <= 3  (but some |z| > 2) and every rCV <= 6%
 #   Fail    : any   |z| >  3  or  any   rCV >  6%
+#
+# rCV is pass/fail only: it never produces a Caution.
 #
 # Status codes use the Luciernaga colour vocabulary (Green / Yellow / Red, Gray =
 # unscored) so SmallTable / SmallTableGlobal / InstrumentText / InstrumentColor
@@ -22,8 +24,7 @@ HOME_TRAIL_DAYS <- 30
 HOME_MIN_N      <- 8
 HOME_Z_PASS     <- 2
 HOME_Z_CAUTION  <- 3
-HOME_RCV_PASS   <- 5
-HOME_RCV_CAUTION <- 6
+HOME_RCV_LIMIT  <- 6
 
 .worst <- function(s) {
   if (any(s == "Red", na.rm = TRUE)) "Red"
@@ -65,8 +66,7 @@ home_qc_scores <- function(inst, MainFolder, trail_days = HOME_TRAIL_DAYS,
                               abs(z) <= HOME_Z_CAUTION ~ "Yellow",
                               TRUE ~ "Red"),
       rCV = dplyr::case_when(is.na(r) ~ "Gray",
-                             r < HOME_RCV_PASS ~ "Green",
-                             r <= HOME_RCV_CAUTION ~ "Yellow",
+                             r <= HOME_RCV_LIMIT ~ "Green",
                              TRUE ~ "Red"),
       stringsAsFactors = FALSE)
   })
@@ -134,4 +134,61 @@ home_small_table <- function(data) {
     gt::tab_spanner(label = "%RCV ", columns = c(rCVValue, rCV)) |>
     gt::cols_label(GainValue = "Value", `Gain z` = "z (1 mo)", Gain = "Status",
                    rCVValue = "Value", rCV = "Status")
+}
+
+# ---- What triggered each non-Pass run ---------------------------------------
+# One row per Caution/Fail run: which check fired (Gain, rCV or both), how many
+# gain detectors moved up vs down (a coordinated shift across many detectors is
+# the signature to cross-check against the 6-peak MFI data -- bead degradation
+# can fake a gain change), and the offending detectors, worst first.
+home_triggers <- function(scores, inst, max_list = 6) {
+  fmt_list <- function(x) {
+    if (length(x) == 0) return("")
+    if (length(x) > max_list)
+      x <- c(x[seq_len(max_list)], sprintf("+%d more", length(x) - max_list))
+    paste(x, collapse = ", ")
+  }
+  scores |>
+    dplyr::group_by(DateTime) |>
+    dplyr::filter(any(Gain %in% c("Yellow", "Red") | rCV == "Red")) |>
+    dplyr::group_modify(function(s, key) {
+      g  <- s[s$Gain %in% c("Yellow", "Red"), , drop = FALSE]
+      g  <- g[order(-abs(g$z)), , drop = FALSE]
+      r  <- s[s$rCV == "Red", , drop = FALSE]
+      r  <- r[order(-r$rCVValue), , drop = FALSE]
+      data.frame(
+        Status  = .worst(c(s$Gain, s$rCV)),
+        Trigger = paste(c(if (nrow(g)) "Gain", if (nrow(r)) "rCV"), collapse = " + "),
+        Shift   = if (nrow(g)) sprintf("%d up / %d down", sum(g$z > 0), sum(g$z < 0)) else "",
+        `Gain detectors` = fmt_list(sprintf("%s %+.2f SD", g$Detector, g$z)),
+        `rCV detectors`  = fmt_list(sprintf("%s %.1f%%", r$Detector, r$rCVValue)),
+        check.names = FALSE, stringsAsFactors = FALSE)
+    }) |>
+    dplyr::ungroup() |>
+    dplyr::mutate(Date = as.Date(DateTime), Time = format(DateTime, "%H:%M"),
+                  Instrument = inst, .before = 1) |>
+    dplyr::select(-DateTime)
+}
+
+# gt table of triggers across instruments, newest first. Instrument links to its
+# Levey-Jennings page so the flagged detectors can be inspected.
+home_trigger_table <- function(trig) {
+  pages <- c("3L" = "pages/Aurora3L.html", "5L" = "pages/Aurora5L.html",
+             "EVO" = "pages/AuroraEVO.html")
+  trig |>
+    dplyr::arrange(dplyr::desc(Date), dplyr::desc(Time), Instrument) |>
+    dplyr::mutate(Instrument = sprintf("[%s](%s)", Instrument, pages[Instrument])) |>
+    gt::gt() |>
+    gt::fmt_markdown(columns = Instrument) |>
+    gt::data_color(columns = Status, fn = function(x) dplyr::case_when(
+      x == "Yellow" ~ "#BA8E23", x == "Red" ~ "#C80815", TRUE ~ NA_character_)) |>
+    gt::sub_values(columns = Status, values = "Yellow", replacement = "Caution") |>
+    gt::sub_values(columns = Status, values = "Red",    replacement = "Fail") |>
+    gt::opt_table_font(font = "Montserrat") |>
+    gt::cols_align(align = "center", columns = c(Date, Time, Instrument, Status, Trigger, Shift)) |>
+    gt::cols_label(Shift = "Gain shift") |>
+    gt::cols_width(`Gain detectors` ~ gt::px(420), `rCV detectors` ~ gt::px(220),
+                   Status ~ gt::px(90), Trigger ~ gt::px(100)) |>
+    gt::opt_interactive(use_search = TRUE, use_filters = TRUE, use_pagination = TRUE,
+                        page_size_default = 25, use_compact_mode = TRUE)
 }
