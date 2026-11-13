@@ -79,6 +79,12 @@ mef_scale <- function(d) {
 }
 
 qb_chi2_max <- 50     # above this the fit is not valid -> Q/B/LoR suppressed
+# Q resolvability: when the photon term c1 is swamped by the blank (c0) and bead
+# CV0 (c2) terms on the dim peaks, c1 collapses toward 0 and Q = 1/c1 explodes
+# (e.g. V4-A 2026-07-06 13:54 and 2026-11-05: Q x60-130, SE 3400-5900%). The fit
+# itself is fine (chi2/df ~3-5) and 2+2SD is ~95% blank-driven, so only Q and the
+# Q-derived B are suppressed; 2+2SD is kept.
+qb_q_rse_max <- 1     # Q fit SE above 100% -> Q (and B) not resolved
 mef_slope_ok <- c(0.9, 1.1); mef_r2_ok <- 0.98
 
 ## ---- Sensitivity for any detector (MFI headline + Spe) ----------------------
@@ -90,18 +96,21 @@ qb_spe <- function(d) {
   g   <- suppressWarnings(max(d$gain, na.rm = TRUE)); if (!is.finite(g)) g <- NA_real_
   ok  <- is.finite(pf$c1) && is.finite(pf$chi2_df) && pf$chi2_df <= qb_chi2_max
   c0p <- is.finite(pf$c0) && pf$c0 >= 0
+  Q_rse <- if (ok) pf$c1_se / pf$c1 else NA_real_
+  q_ok  <- ok && is.finite(Q_rse) && Q_rse <= qb_q_rse_max            # Q resolved?
   qflag <- c(if (!is.na(pf$flag)) pf$flag else NULL,
-             if (is.finite(pf$chi2_df) && pf$chi2_df > qb_chi2_max) sprintf("chi2/df=%.0f", pf$chi2_df) else NULL)
-  Q_I     <- if (ok) 1 / pf$c1 else NA_real_
-  BSD_Spe <- if (ok && c0p) sqrt(pf$c0) / pf$c1 else NA_real_
+             if (is.finite(pf$chi2_df) && pf$chi2_df > qb_chi2_max) sprintf("chi2/df=%.0f", pf$chi2_df) else NULL,
+             if (ok && !q_ok) sprintf("Q unresolved (SE %.0f%%): Q/B suppressed", 100 * Q_rse) else NULL)
+  Q_I     <- if (q_ok) 1 / pf$c1 else NA_real_
+  BSD_Spe <- if (q_ok && c0p) sqrt(pf$c0) / pf$c1 else NA_real_
   bsd_mfi <- { b <- d$sd[d$peak == 1]; if (length(b)) b[1] else NA_real_ }
-  tibble(lor_mfi = if (ok) 4 * (pf$c1 + bsd_mfi) else NA_real_,                 # headline 2+2SD, MFI
+  tibble(lor_mfi = if (ok) 4 * (pf$c1 + bsd_mfi) else NA_real_,                 # headline 2+2SD, MFI (kept when Q unresolved)
          bsd_mfi = bsd_mfi,
          photon_share = if (ok) pf$c1 / (pf$c1 + bsd_mfi) else NA_real_,         # 4/Q share
-         Q_I = Q_I, Q_rse = if (ok) pf$c1_se / pf$c1 else NA_real_,
+         Q_I = Q_I, Q_rse = Q_rse,
          Q   = Q_I * g,                                    # relative Q: Spe per gain-normalised MFI
-         Q_noblank_ratio = if (ok && is.finite(nb$c1)) pf$c1 / nb$c1 else NA_real_,  # ~1 = robust
-         B   = if (ok && c0p) pf$c0 / pf$c1^2 else NA_real_,                         # B_Spe
+         Q_noblank_ratio = if (q_ok && is.finite(nb$c1)) pf$c1 / nb$c1 else NA_real_,  # ~1 = robust
+         B   = if (q_ok && c0p) pf$c0 / pf$c1^2 else NA_real_,                         # B_Spe
          BSD_Spe = BSD_Spe,
          lor_spe = 4 * (1 + BSD_Spe),                                               # 2+2SD, Spe
          CV0 = if (ok) sqrt(max(pf$c2, 0)) else NA_real_,
@@ -118,20 +127,23 @@ qb_mef_one <- function(d, det = NA_character_) {
   ok <- is.finite(k) && is.finite(pf$c1) && is.finite(pf$chi2_df) && pf$chi2_df <= qb_chi2_max
   mef_ok <- is.finite(sc$ll_slope) && sc$ll_slope >= mef_slope_ok[1] && sc$ll_slope <= mef_slope_ok[2] &&
             is.finite(sc$ll_r2) && sc$ll_r2 > mef_r2_ok
-  Q    <- if (ok) k / pf$c1 else NA_real_
-  Q_se <- if (ok) k / pf$c1^2 * pf$c1_se else NA_real_
-  c0p  <- ok && is.finite(pf$c0) && pf$c0 >= 0
+  q_ok <- ok && pf$c1_se / pf$c1 <= qb_q_rse_max                 # Q resolved?
+  Qfit <- if (ok) k / pf$c1 else NA_real_                         # used for 2+2SD even if unresolved
+  Q    <- if (q_ok) Qfit else NA_real_
+  Q_se <- if (q_ok) k / pf$c1^2 * pf$c1_se else NA_real_
+  c0p  <- q_ok && is.finite(pf$c0) && pf$c0 >= 0
   B    <- if (c0p) pf$c0 / (pf$c1 * k) else NA_real_
   BSD  <- if (ok && nrow(bl)) bl$sd[1] / k else NA_real_          # measured blank SD (MEF)
-  BSDf <- if (c0p) sqrt(pf$c0) / k else NA_real_                  # fitted cross-check
-  lor  <- 4 * (1 / Q + BSD)
+  BSDf <- if (ok && is.finite(pf$c0) && pf$c0 >= 0) sqrt(pf$c0) / k else NA_real_  # fitted cross-check
+  lor  <- 4 * (1 / Qfit + BSD)
   fl <- c(if (!is.na(pf$flag)) pf$flag else NULL,
           if (is.finite(pf$chi2_df) && pf$chi2_df > qb_chi2_max) sprintf("chi2/df=%.0f: fit invalid", pf$chi2_df) else NULL,
+          if (ok && !q_ok) sprintf("Q unresolved (SE %.0f%%): Q/B suppressed", 100 * pf$c1_se / pf$c1) else NULL,
           if (!mef_ok && is.finite(sc$ll_slope)) sprintf("log-log slope %.2f: MEF scale mismatched", sc$ll_slope) else NULL,
           if (isTRUE(grepl("^R[0-9]", det))) "red detector: dim-bead intrinsic CV (Hoffman & Wood 2007)" else NULL)
   tibble(k = k, ll_slope = sc$ll_slope, ll_r2 = sc$ll_r2, n_cal = sc$n_cal,
          Q = Q, Q_se = Q_se, B = B, BSD = BSD, BSD_fit = BSDf,
-         lor = lor, lor_se = 4 * Q_se / Q^2, photon_share = (4 / Q) / lor,
+         lor = lor, lor_se = 4 * Q_se / Q^2, photon_share = (4 / Qfit) / lor,
          CV0 = if (ok) sqrt(max(pf$c2, 0)) else NA_real_, chi2_df = pf$chi2_df,
          mef_ok = mef_ok, mef_flag = if (length(fl)) paste(fl, collapse = "; ") else NA_character_)
 }

@@ -119,6 +119,10 @@ Two methods exist; only the 6-peak one is live (8-peak retired 2026-11-13):
   - Headline: `lor_mfi = 4·(c1 + blank SD)` for all 64 detectors. Daily QC pins the
     MFI scale, so it tracks the MEF limit; it's background-limited and stable at
     about 5–10%. Q itself has about 30% fit SE per run.
+  - Suppression: χ²/df > 50 or c1 ≤ 0 blanks Q, B and 2+2SD. Q fit SE > 100%
+    (`qb_q_rse_max`) blanks only Q and B and keeps 2+2SD; this affects about 2.6% of
+    fits, mostly V/UV, where c1 collapses toward 0 (e.g. V4-A 2026-07-06 13:54,
+    2026-11-05). Δ-vs-baseline uses each detector's first finite run.
   - MEF-unit values exist for the 18 `mef_map` detectors. Only some pass the
     log–log slope check (0.9–1.1); the rest are flagged via `mef_ok`.
   - Needs the archive's raw `sd` (blank = right-half SD) and `saturated` columns

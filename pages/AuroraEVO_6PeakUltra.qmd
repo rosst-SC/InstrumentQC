@@ -37,53 +37,6 @@ if (n_runs < 5) cat(sprintf(
   "::: {.callout-warning appearance='simple'}\nOnly **%d run(s)** so far — trends and the mean ± 2 SD control limits are **preliminary** and will firm up as more runs accumulate.\n:::\n\n", n_runs))
 ```
 
-# Executive summary
-
-:::: {.callout-note collapse="false" title="Executive summary — run status and latest-vs-baseline overview (click to collapse)"}
-
-```{r}
-#| label: run-status
-#| results: asis
-status <- pm |> filter(peak == n_peaks) |> group_by(run_label) |>
-  summarise(saturated = sum(!in_range), total = n(), .groups = "drop") |> arrange(run_label)
-for (i in seq_len(nrow(status))) { r <- status[i, ]
-  cat(sprintf("::: {.%s}\n**Run %s** — %d / %d detectors saturated at peak 6 (brightest).\n:::\n\n",
-              if (r$saturated == 0) "callout-note" else "callout-warning",
-              as.character(r$run_label), r$saturated, r$total)) }
-```
-
-Latest run vs the baseline run (**`r base_run`**), per detector. Blue = improved,
-red = degraded (sign adjusted so red is always *worse*). Hover for values.
-
-```{r}
-#| label: overview-heat
-latest <- runs[length(runs)]
-ov <- metrics |> filter(run_label == latest) |>
-  transmute(detector,
-            `2+2SD limit`   = -lor_mfi_d,           # lower = better -> flip
-            `Sensitivity Q` = Q_d,                 # higher = better -> red when negative
-            `Background B`  = -B_d,                 # higher B worse -> flip (B in Spe)
-            `Peak-6 %CV`    = -cvt_d,               # higher CV worse -> flip
-            `Staining idx`  = si_d,
-            `Peaks resolved`= n_resolved_d,
-            `MFI/gain`      = mfi_norm_d) |>
-  pivot_longer(-detector, names_to = "metric", values_to = "delta")
-ov$delta[!is.finite(ov$delta)] <- NA
-lim <- stats::quantile(abs(ov$delta), 0.95, na.rm = TRUE); if (!is.finite(lim) || lim == 0) lim <- 1
-ovp <- ggplot(ov, aes(metric, detector, fill = pmax(pmin(delta, lim), -lim),
-                      text = sprintf("%s | %s<br>%+.1f%% vs baseline", detector, metric, delta))) +
-  geom_tile(colour = "white", linewidth = 0.1) +
-  scale_y_discrete(limits = rev(detector_channels)) +
-  scale_fill_gradient2(low = "#b2182b", mid = "white", high = "#2166ac", midpoint = 0,
-                       name = "Δ% vs\nbaseline\n(red=worse)") +
-  labs(x = NULL, y = NULL, title = sprintf("Detector performance change — %s vs baseline", latest)) +
-  theme_bw(base_size = 8) + theme(axis.text.y = element_text(size = 5),
-                                  axis.text.x = element_text(angle = 30, hjust = 1))
-gp(ovp, 680)
-```
-
-::::
-
 # Detail {.tabset}
 
 ## Peak clustering
@@ -140,10 +93,8 @@ gp(ggplot(csz, aes(factor(peak), events, fill = run_label,
 
 ## Tracking over time
 
-Each peak's median intensity and %CV against acquisition timestamp — the QC payoff.
-Stable lines mean stable performance; a step or drift flags a detector/laser
-problem. Resolved, in-range peaks only. These fill in as runs accumulate (sparse,
-mostly points, with few timestamps so far).
+Peak-6 median intensity and %rCV per laser across runs. A stable row means stable
+performance; a step or drift flags a laser problem. In-range peaks only.
 
 ### Per-laser overview
 
@@ -197,25 +148,6 @@ gp(ggplot(laser_delta_cv, aes(run_label, laser, fill = delta_pct,
      theme_bw(base_size = 11) +
      theme(axis.text = element_text(size = 10)), 420)
 ```
-
-::: {.callout-note collapse="false"}
-### Per-peak median intensity by run
-
-```{r}
-#| label: trend-median
-#| fig-height: 22
-#| fig-width: 18
-trend <- pm |> filter(resolved, in_range) |> mutate(peak = factor(peak, levels = 1:n_peaks))
-ggplot(trend, aes(run_label, median, colour = peak, group = peak)) +
-  geom_line() + geom_point(size = 0.8) +
-  scale_y_flowjo_biexp(maxValue = biex_max, pos = biex_pos, neg = biex_neg, widthBasis = biex_width_basis) +
-  facet_wrap(~ detector, scales = "free_y", ncol = 6) +
-  labs(title = "Per-peak median intensity over time (peaks 1–6; 1 = blank)",
-       x = NULL, y = "Median (biexp)", colour = "Peak") +
-  theme_bw(base_size = 8) +
-  theme(strip.text = element_text(size = 7), axis.text.x = element_text(size = 5, angle = 45, hjust = 1))
-```
-:::
 
 ## %CV & noise floor
 
@@ -351,7 +283,10 @@ never `%rCV × median`, which flips sign when a blank median is ≤ 0.
 
 **Validity.** Fits with χ²/df > 50 (weighted residuals vs pure sampling noise; 2–7 is
 normal with IQR-based SDs) are **suppressed**, since the model does not describe the data
-(listed in the table below). For MEF values the free log–log slope must be **0.9–1.1** with
+(listed in the table below). When the fit is fine but its photon term is swamped by blank
+noise and bead CV on the dim peaks, Q's own fit SE exceeds 100% and Q = 1/c1 can jump
+10–100× (e.g. V4-A on 2026-07-06 13:54 and 2026-11-05). Those **Q and B** values are
+suppressed as *unresolved*, and the 2+2SD is kept, since it is ~95% blank-driven. For MEF values the free log–log slope must be **0.9–1.1** with
 R² > 0.98; otherwise the certificate's MEF scale does not match that detector (most UV and
 violet channels here, slopes 1.15–1.36; PE-Cy5 0.79). Those rows are still shown, flagged as
 lower-confidence.
@@ -408,9 +343,10 @@ if (nrow(flagged)) {
   fl <- flagged |> group_by(run_label) |>
     summarise(`detector fits flagged` = n(),
               `suppressed (no 2+2SD)` = sum(!is.finite(lor_mfi)),
+              `Q/B unresolved` = sum(is.finite(lor_mfi) & !is.finite(Q_I)),
               `example reasons` = paste(head(sort(unique(qflag)), 3), collapse = " | "),
               .groups = "drop")
-  knitr::kable(fl, caption = "Flagged fits. Suppressed detector-runs (blank tiles above) have χ²/df > 50 or c1 ≤ 0: the noise model does not describe that run, which is NOT a sensitivity gain. 'c2<0' / 'c0<0' rows keep their 2+2SD but have CV₀ fixed at 0 or B undefined.")
+  knitr::kable(fl, caption = "Flagged fits. Suppressed detector-runs (blank tiles above) have χ²/df > 50 or c1 ≤ 0: the noise model does not describe that run, which is NOT a sensitivity gain. 'Q unresolved' rows (Q fit SE > 100%) keep their 2+2SD but show blank Q and B tiles. 'c2<0' / 'c0<0' rows keep their 2+2SD but have CV₀ fixed at 0 or B undefined.")
 }
 ```
 
@@ -530,7 +466,7 @@ flat if the bead and optics are stable.
 #| label: gain-missing-note
 #| output: asis
 if (length(runs_no_gain)) cat(sprintf(
-  "::: {.callout-warning appearance='simple'}\nNo daily-QC gain found in the archive for **%s** — these run(s) are shown blank on every gain-normalised panel (relative Q, MFI/gain, and the executive overview's Q & MFI rows) rather than mixed onto a raw-MFI scale. Their other metrics (2+2SD, B, MEF-unit values, linearity, %%CV) are unaffected and fully valid. Update `data/EVO/Archive/ArchivedDataEVO.csv` with the run's gain to populate the gain panels.\n:::\n\n",
+  "::: {.callout-warning appearance='simple'}\nNo daily-QC gain found in the archive for **%s** — these run(s) are shown blank on every gain-normalised panel (relative Q and MFI/gain) rather than mixed onto a raw-MFI scale. Their other metrics (2+2SD, B, MEF-unit values, linearity, %%CV) are unaffected and fully valid. Update `data/EVO/Archive/ArchivedDataEVO.csv` with the run's gain to populate the gain panels.\n:::\n\n",
   paste(runs_no_gain, collapse = ", ")))
 ```
 

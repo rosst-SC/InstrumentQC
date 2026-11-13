@@ -174,8 +174,11 @@ metrics <- res |>
   left_join(cvtop, by = c("run_label","detector")) |>
   left_join(si,    by = c("run_label","detector")) |>
   left_join(ptop |> select(run_label, detector, mfi_norm), by = c("run_label","detector"))
+# Baseline = each detector's first run with a finite value (a suppressed first run,
+# e.g. Q unresolved, would otherwise blank that detector's whole Δ series).
 add_base <- function(df, v) df |> group_by(detector) |> arrange(run_label) |>
-  mutate("{v}_d" := (.data[[v]] - first(.data[[v]])) / abs(first(.data[[v]])) * 100) |> ungroup()
+  mutate(.b = .data[[v]][which(is.finite(.data[[v]]))[1]],
+         "{v}_d" := (.data[[v]] - .b) / abs(.b) * 100) |> select(-.b) |> ungroup()
 for (v in c("lor_mfi","Q","B","cvt","si","mfi_norm","n_resolved")) metrics <- add_base(metrics, v)
 
 # Control limits (mean +/- 2 SD) across runs, per detector, for the trend bands.
@@ -184,14 +187,17 @@ clim <- function(df, v) df |> group_by(detector) |>
   mutate(lcl = mu - 2*sd, ucl = mu + 2*sd)
 cv_y_scale <- scale_y_continuous(expand = expansion(mult = c(0.06, 0.18)))
 
-# Helper: per-detector x run heatmap (rows = detector in acquisition order)
-heat <- function(df, fill, title, sub = NULL, diverging = FALSE, limitsym = FALSE) {
+# Helper: per-detector x run heatmap (rows = detector in acquisition order).
+# .heat1 / .heat_fc1 draw one panel for the detectors in `dets`; the public heat() /
+# heat_fc() (below) split by laser so each laser gets its own colour scale.
+.heat1 <- function(df, fill, title, sub = NULL, diverging = FALSE, limitsym = FALSE,
+                   dets = detector_channels) {
   p <- ggplot(df, aes(run_label, detector, fill = .data[[fill]],
                       text = sprintf("%s | %s<br>%s: %.3g", detector, run_label, fill, .data[[fill]]))) +
     geom_tile(colour = "white", linewidth = 0.1) +
-    scale_y_discrete(limits = rev(detector_channels)) +
+    scale_y_discrete(limits = rev(dets)) +
     labs(x = NULL, y = NULL, title = title, subtitle = sub, fill = "") +
-    theme_bw(base_size = 8) + theme(axis.text.y = element_text(size = 5),
+    theme_bw(base_size = 8) + theme(axis.text.y = element_text(size = 7),
                                     axis.text.x = element_text(angle = 30, hjust = 1),
                                     plot.subtitle = element_text(size = 8, colour = "grey40"))
   if (diverging) {
@@ -201,8 +207,40 @@ heat <- function(df, fill, title, sub = NULL, diverging = FALSE, limitsym = FALS
   } else p <- p + scale_fill_viridis_c(option = "viridis")
   p
 }
-gp <- function(p, h = 620) ggplotly(p, tooltip = "text", height = h) |>
-  plotly::config(displayModeBar = FALSE)
+# One heatmap per laser, each with its own colour scale, so small changes within a
+# laser are not washed out by the range of the other lasers. Returns a list of
+# ggplots (class "laser_heat"); gp() renders it as stacked plotly panels.
+heat_rows_px <- 20     # px per detector row in a per-laser panel
+heat_pad_px  <- 120    # title, subtitle and x-axis labels
+by_laser <- function(df, build, title) {
+  df  <- df |> filter(!is.na(detector))
+  las <- laser_of(as.character(df$detector))
+  out <- list()
+  for (L in laser_levels) {
+    dets <- detector_channels[laser_of(detector_channels) == L]
+    d    <- df[las == L, , drop = FALSE]
+    if (!nrow(d)) next
+    p <- build(d, sprintf("%s — %s laser", title, L), dets)
+    attr(p, "n_det") <- length(dets)
+    out[[L]] <- p
+  }
+  structure(out, class = "laser_heat")
+}
+heat <- function(df, fill, title, sub = NULL, diverging = FALSE, limitsym = FALSE)
+  by_laser(df, function(d, t, dets) .heat1(d, fill, t, sub, diverging, limitsym, dets), title)
+
+gp <- function(p, h = 620) {
+  if (inherits(p, "laser_heat")) {
+    # Each panel sits in a fixed-height, non-flexing div: on the dashboard, cards
+    # otherwise squeeze the 5 stacked widgets to fit, so the card scrolls instead.
+    return(do.call(htmltools::tagList, lapply(p, function(pp) {
+      ph <- heat_pad_px + heat_rows_px * attr(pp, "n_det")
+      htmltools::div(style = sprintf("height:%dpx; min-height:%dpx; flex:none;", ph, ph),
+        ggplotly(pp, tooltip = "text", height = ph) |> plotly::config(displayModeBar = FALSE))
+    })))
+  }
+  ggplotly(p, tooltip = "text", height = h) |> plotly::config(displayModeBar = FALSE)
+}
 
 # ---- Per-detector fold-change reference for the FC maps --------------------
 # Absolute heatmaps span orders of magnitude across detectors, so the companion
@@ -241,7 +279,7 @@ best_fc <- function(df, v, higher_better = TRUE) {
     deg   = if (higher_better) log2(.best / .val) else log2(.val / .best),
     fold  = 2^deg) |> ungroup()
 }
-heat_fc <- function(df, v, title, sub = NULL, higher_better = TRUE) {
+.heat_fc1 <- function(df, v, title, sub = NULL, higher_better = TRUE, dets = detector_channels) {
   if (fc_locked) {
     r <- fc_ref |> filter(metric == v) |> transmute(detector = as.character(detector), ref, ref_sd)
     d <- df |> mutate(detector = as.character(detector)) |> left_join(r, by = "detector") |>
@@ -253,12 +291,12 @@ heat_fc <- function(df, v, title, sub = NULL, higher_better = TRUE) {
           text = sprintf("%s | %s<br>%s = %.3g<br>%+.2f log₂ vs normal | %+.1f SD",
                          detector, run_label, v, value, lfc, sddev))) +
       geom_tile(colour = "white", linewidth = 0.1) +
-      scale_y_discrete(limits = rev(detector_channels)) +
+      scale_y_discrete(limits = rev(dets)) +
       scale_fill_gradient2(low = "#2166ac", mid = "white", high = "#b2182b", midpoint = 0,
                            limits = c(-hi, hi), name = "log₂ vs\nqualified\nnormal") +
       labs(x = NULL, y = NULL, title = title,
            subtitle = "deviation from locked reference (red = worse)") +
-      theme_bw(base_size = 8) + theme(axis.text.y = element_text(size = 5),
+      theme_bw(base_size = 8) + theme(axis.text.y = element_text(size = 7),
                                       axis.text.x = element_text(angle = 30, hjust = 1),
                                       plot.subtitle = element_text(size = 8, colour = "grey40"))
   } else {
@@ -267,13 +305,15 @@ heat_fc <- function(df, v, title, sub = NULL, higher_better = TRUE) {
     ggplot(d, aes(run_label, detector, fill = pmin(deg, hi),
           text = sprintf("%s | %s<br>%s = %.3g<br>%.2f× its own best", detector, run_label, v, .data[[v]], fold))) +
       geom_tile(colour = "white", linewidth = 0.1) +
-      scale_y_discrete(limits = rev(detector_channels)) +
+      scale_y_discrete(limits = rev(dets)) +
       scale_fill_gradient(low = "white", high = "#b2182b", limits = c(0, hi),
                           name = "log₂ fold\nvs best", na.value = "grey92") +
       labs(x = NULL, y = NULL, title = title,
            subtitle = if (is.null(sub)) "preliminary: vs each detector's best so far" else sub) +
-      theme_bw(base_size = 8) + theme(axis.text.y = element_text(size = 5),
+      theme_bw(base_size = 8) + theme(axis.text.y = element_text(size = 7),
                                       axis.text.x = element_text(angle = 30, hjust = 1),
                                       plot.subtitle = element_text(size = 8, colour = "grey40"))
   }
 }
+heat_fc <- function(df, v, title, sub = NULL, higher_better = TRUE)
+  by_laser(df, function(d, t, dets) .heat_fc1(d, v, t, sub, higher_better, dets), title)
