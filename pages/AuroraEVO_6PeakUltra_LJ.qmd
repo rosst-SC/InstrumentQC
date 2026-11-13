@@ -166,7 +166,11 @@ Levey-Jennings tracking of **URCP-38-2K 6-peak Ultra Rainbow** beads on the **Cy
 
 **Linearity & 2+2SD page.** **Linearity** shows R² of log₁₀(median) against peak number over peaks 2–6 for each detector (1 = perfectly log-linear). The **MEF** tab shows the log-log slope of median against the certificate MEF values for the 18 certificate detectors (ideal 1, acceptable 0.9–1.1). **2+2SD** is the Parks 2018 limit of resolution in MFI for all 64 detectors, where lower means more sensitive. Its **MEF** tab shows the same limit in MEF units. Detectors marked *MEF scale mismatch* fail the slope check, so their MEF values are lower-confidence. Runs whose fit failed have no 2+2SD value and are not plotted.
 
-**Control bands:** each LJ plot (everything except All peaks) has a centre line at the detector's robust median over the full history. Green is within ±2 SD, amber is 2–3 SD, and the red dashed lines are at ±3 SD, where SD is the MAD-scaled SD. Bands need at least 8 unflagged runs.
+**Control bands:** every band is centred on the detector's robust median over the full history, and needs at least 8 unflagged runs.
+
+- **Peak 6 median** uses **fixed percentage limits**: green is within ±3%, amber is 3–5%, and the red dashed lines are the ±5% action limits. Daily QC sets the gain to hold this value at a target, so a fixed tolerance compares across detectors. A typical detector varies by about 1% run to run, so a point past ±5% is a real shift.
+- **All other LJ plots** (rCV, linearity, 2+2SD) use **SD bands**: green is within ±2 SD, amber is 2–3 SD, and the red dashed lines are at ±3 SD, where SD is the MAD-scaled SD.
+- **All peaks** plots have no bands.
 
 **Red squares** mark runs where that peak was saturated or out of range. They're plotted but left out of the band baseline. Dotted blue verticals are engineer visits.
 
@@ -178,27 +182,27 @@ Note: daily QC pins bead MFI by adjusting gain, so the medians are held roughly 
 
 ```{r}
 #| title: "UV · Peak 6"
-lj_render(MedP6$UV)
+lj_render_pct(MedP6$UV, pct = c(3, 5))
 ```
 
 ```{r}
 #| title: "V · Peak 6"
-lj_render(MedP6$V)
+lj_render_pct(MedP6$V, pct = c(3, 5))
 ```
 
 ```{r}
 #| title: "B · Peak 6"
-lj_render(MedP6$B)
+lj_render_pct(MedP6$B, pct = c(3, 5))
 ```
 
 ```{r}
 #| title: "YG · Peak 6"
-lj_render(MedP6$YG)
+lj_render_pct(MedP6$YG, pct = c(3, 5))
 ```
 
 ```{r}
 #| title: "R · Peak 6"
-lj_render(MedP6$R)
+lj_render_pct(MedP6$R, pct = c(3, 5))
 ```
 
 ```{r}

@@ -53,6 +53,50 @@ add_lj_bands <- function(p, k = c(2, 3), min_n = 8,
 lj_render <- function(plotlist, clamp0 = FALSE)
   htmltools::tagList(lapply(lapply(plotlist, add_lj_bands, clamp0 = clamp0), ggplotly))
 
+# ---- Fixed percentage bands --------------------------------------------------
+# For target-controlled values (e.g. 6-peak bead peak-6 median, which daily QC
+# holds at a set level) a fixed tolerance is more meaningful than an SD band:
+# it is comparable across detectors and does not tighten on very quiet ones.
+# Center = robust median of the unflagged history; green = within +/-pct[1]%,
+# amber = pct[1]-pct[2]%, red dashed = +/-pct[2]% action limits.
+add_lj_bands_pct <- function(p, pct = c(3, 5), min_n = 8, exclude_flagged = TRUE) {
+  ycol <- p$labels$title
+  d <- p$data
+  if (is.null(ycol) || !ycol %in% names(d) || !"DateTime" %in% names(d)) return(p)
+  vals <- suppressWarnings(as.numeric(d[[ycol]]))
+  keep <- is.finite(vals)
+  fcol <- paste0("Flag-", ycol)
+  if (exclude_flagged && fcol %in% names(d)) {
+    fl <- suppressWarnings(as.logical(d[[fcol]]))
+    keep <- keep & !(fl %in% TRUE)
+  }
+  base <- vals[keep]
+  if (length(base) < min_n) return(p)                       # preliminary: no bands
+  center <- stats::median(base, na.rm = TRUE)
+  if (!is.finite(center) || center == 0) return(p)
+  pct <- sort(unique(pct)); inner <- pct[1] / 100; outer <- pct[length(pct)] / 100
+  xr <- range(d$DateTime, na.rm = TRUE)
+  rect <- function(ymin, ymax, fillcol)
+    geom_rect(data = data.frame(xmin = xr[1], xmax = xr[2], ymin = ymin, ymax = ymax),
+              inherit.aes = FALSE,
+              aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+              fill = fillcol, alpha = 0.12)
+  c0 <- abs(center)
+  band_layers <- list(
+    rect(center - inner * c0, center + inner * c0, "#2ca02c"),   # in tolerance (green)
+    rect(center - outer * c0, center - inner * c0, "#ff7f0e"),   # warning below (amber)
+    rect(center + inner * c0, center + outer * c0, "#ff7f0e"),   # warning above (amber)
+    geom_hline(yintercept = center, color = "grey40", linewidth = 0.4),
+    geom_hline(yintercept = center + c(-1, 1) * outer * c0,
+               color = "#d62728", linetype = "dashed", linewidth = 0.3)
+  )
+  p$layers <- c(band_layers, p$layers)
+  p
+}
+
+lj_render_pct <- function(plotlist, pct = c(3, 5))
+  htmltools::tagList(lapply(lapply(plotlist, add_lj_bands_pct, pct = pct), ggplotly))
+
 # ---- 1-month trailing bands (Gain) -------------------------------------------
 # Gain is a CONTROLLED output (daily QC sets the voltage to park the bead peak at
 # target), so it drifts up as detectors age -- a full-history band is the wrong
